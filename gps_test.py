@@ -54,6 +54,42 @@ def send_ubx(msg_class, msg_id, payload):
     uart.write(packet)
     print(f"-> UBX Class 0x{msg_class:02X} ID 0x{msg_id:02X} отправлен")
 
+def parse_nmea_time(t):
+    # 114831.00 -> 11:48:31
+    if not t or len(t) < 6:
+        return None
+    hh = t[0:2]
+    mm = t[2:4]
+    ss = t[4:6]
+    return f"{hh}:{mm}:{ss}"
+
+def parse_nmea_date(d):
+    # 151225 -> 15.12.2025
+    if not d or len(d) != 6:
+        return None
+    day = d[0:2]
+    month = d[2:4]
+    year = "20" + d[4:6]
+    return f"{day}.{month}.{year}"
+
+def extract_time_date_lat_lon(nmea_line):
+    parts = nmea_line.split(',')
+
+    if nmea_line.startswith('$GPRMC') and len(parts) >= 10:
+        gps_time = parse_nmea_time(parts[1])
+        lat = nmea_coord_to_float(parts[3], parts[4]) if parts[3] and parts[4] else None
+        lon = nmea_coord_to_float(parts[5], parts[6]) if parts[5] and parts[6] else None
+        gps_date = parse_nmea_date(parts[9]) if parts[9] else None
+        return gps_time, gps_date, lat, lon
+
+    elif nmea_line.startswith('$GPGGA') and len(parts) >= 6:
+        gps_time = parse_nmea_time(parts[1])
+        lat = nmea_coord_to_float(parts[2], parts[3]) if parts[2] and parts[3] else None
+        lon = nmea_coord_to_float(parts[4], parts[5]) if parts[4] and parts[5] else None
+        return gps_time, None, lat, lon
+
+    return None, None, None, None
+
 # --- ЛОГИКА КОНФИГУРАЦИИ ---
 # На NEO-7M конфигурация GNSS отправляется одним пакетом, 
 # где мы перечисляем блоки для каждой системы.
@@ -138,6 +174,9 @@ while True:
                     lat, lon = extract_lat_lon(decoded_line)
                     if lat is not None and lon is not None:
                         print("COORDS:", lat, lon)
+                    gps_time, gps_date, lat, lon = extract_time_date_lat_lon(decoded_line)
+                    if gps_time or gps_date or lat is not None:
+                        print("TIME:", gps_time, "DATE:", gps_date, "LAT:", lat, "LON:", lon)
                     print(decoded_line)
 
                     
