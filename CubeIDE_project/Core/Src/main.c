@@ -31,6 +31,7 @@
 #include "sensor_hw390.h"
 #include "sensor_ds18b20.h"
 #include "sensor_ina219.h"
+#include "lora_app.h"
 #include "usart.h"
 #include <stdio.h>
 #include <string.h>
@@ -120,6 +121,13 @@ int main(void)
   }
   
   printf("All sensors initialized\r\n");
+  
+  /* Инициализация LoRa модуля E22 */
+  if (lora_app_init()) {
+    printf("LoRa initialized OK\r\n");
+  } else {
+    printf("LoRa init failed\r\n");
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -131,41 +139,48 @@ int main(void)
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick() / 1000;
     
-    /* Опрос каждые 10 секунд */
-    if (now - last_poll_time >= 1) {
+    /* Прокачка TX очереди LoRa (вызывать часто, non-blocking) */
+    lora_app_tx_pump();
+    
+    /* Обработка входящих RX пакетов LoRa (команды от Hub, ретрансляция) */
+    lora_app_rx_process();
+    
+    /* Опрос датчиков и отправка в LoRa каждые 10 секунд */
+    if (now - last_poll_time >= 10) {
       last_poll_time = now;
       
       sensor_reading_t reading;
 
-      printf("Testing delays at %ld Hz\n", SystemCoreClock);
+      printf("[Main] Sensor poll at %lus\r\n", (unsigned long)now);
       
-      /* Чтение HW390 */
+      /* Чтение HW390 и отправка в LoRa */
       hw390_start();
-      while (hw390_poll() == 0);  /* Ожидание завершения */
+      while (hw390_poll() == 0);
       if (hw390_get(&reading) == SENSOR_OK) {
         printf("HW390: %.1f%% (raw=%d)\r\n", reading.value, reading.raw);
+        lora_app_send_humidity(reading.value);
       } else {
         printf("HW390: ERROR %d\r\n", reading.error);
       }
       
-      /* Чтение DS18B20 */
+      /* Чтение DS18B20 и отправка в LoRa */
       ds18b20_start();
       int result;
-      while ((result = ds18b20_poll()) == 0) {
-        /* DS18B20 занимает ~750мс, здесь можно добавить sleep */
-      }
+      while ((result = ds18b20_poll()) == 0);
       if (ds18b20_get(&reading) == SENSOR_OK) {
         printf("DS18B20: %.2fC (raw=%d)\r\n", reading.value, reading.raw);
+        lora_app_send_temperature(reading.value);
       } else {
         printf("DS18B20: ERROR %d\r\n", reading.error);
       }
       
-      /* Чтение INA219 */
+      /* Чтение INA219 и отправка в LoRa */
       ina219_start();
       while (ina219_poll() == 0);
       if (ina219_get(&reading) == SENSOR_OK) {
         float voltage = ina219_read_voltage();
         printf("INA219: %.0f%% (%.2fV)\r\n", reading.value, voltage);
+        lora_app_send_battery(reading.value, voltage);
       } else {
         printf("INA219: ERROR %d\r\n", reading.error);
       }
@@ -173,7 +188,7 @@ int main(void)
       printf("---\r\n");
     }
     
-    HAL_Delay(100);  /* 100мс сон между проверками */
+    HAL_Delay(50);  /* 50мс сон для экономии энергии */
   }
   /* USER CODE END 3 */
 }
