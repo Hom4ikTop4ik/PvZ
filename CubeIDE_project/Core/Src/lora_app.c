@@ -69,6 +69,8 @@ lora_pump_result_t lora_app_tx_pump(void)
     if (!lora_queue_pop(&lora_tx_queue, msg, &len)) {
         return LORA_PUMP_ERROR;
     }
+
+    msg[len] = '\0';
     
     /* Парсим тип сообщения для сброса соответствующего force-флага */
     parse_msg_type_and_clear_force((const char *)msg);
@@ -151,11 +153,13 @@ void lora_app_rx_process(void)
         return;  /* нет данных или таймаут */
     }
     
+    buffer[len] = '\0';
+
     /* Шаг 1: Парсинг ключа и проверка на дубликат (ТОЛЬКО ключ!) */
     lora_history_key_t key;
     if (!lora_history_parse_key((char *)buffer, &key)) {
         /* Не удалось распарсить ключ - неверный формат */
-        printf("[LoRa] RX: invalid format\r\n");
+        printf("[LoRa] RX: invalid format - %s\r\n", (char*)buffer);
         return;
     }
     
@@ -182,6 +186,7 @@ bool lora_app_send_humidity(float humidity)
     }
     
     uint8_t buffer[LORA_MAX_PAYLOAD_LEN];
+    memset(buffer, 0, sizeof(buffer));
     uint16_t len = lora_packet_build_humidity(buffer, sizeof(buffer), humidity);
     
     if (len == 0) return false;
@@ -196,6 +201,7 @@ bool lora_app_send_temperature(float temp)
     }
     
     uint8_t buffer[LORA_MAX_PAYLOAD_LEN];
+    memset(buffer, 0, sizeof(buffer));
     uint16_t len = lora_packet_build_temperature(buffer, sizeof(buffer), temp);
     
     if (len == 0) return false;
@@ -210,6 +216,7 @@ bool lora_app_send_battery(float percentage, float voltage)
     }
     
     uint8_t buffer[LORA_MAX_PAYLOAD_LEN];
+    memset(buffer, 0, sizeof(buffer));
     /* Используем build_state с фиктивными rssi/snr для совместимости формата */
     uint16_t len = lora_packet_build_state(buffer, sizeof(buffer), 
                                             -100, 5.0f, percentage, true);

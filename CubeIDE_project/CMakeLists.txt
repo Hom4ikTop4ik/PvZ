@@ -48,6 +48,12 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/sensor_hw390.c
     Core/Src/sensor_ds18b20.c
     Core/Src/sensor_ina219.c
+    Core/Src/lora_app.c
+    Core/Src/lora_command.c
+    Core/Src/lora_driver.c
+    Core/Src/lora_history.c
+    Core/Src/lora_packet.c
+    Core/Src/lora_queue.c
 )
 
 # Add include paths

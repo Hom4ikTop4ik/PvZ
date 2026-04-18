@@ -31,7 +31,7 @@
 /* Пин AUX для проверки готовности модуля E22 */
 /* E22 устанавливает AUX=0 во время передачи/инициализации, AUX=1 когда готов */
 #define LORA_AUX_PORT           GPIOA
-#define LORA_AUX_PIN            GPIO_PIN_7  /* TODO: настроить в CubeMX */
+#define LORA_AUX_PIN            GPIO_PIN_7
 
 /* Режимы модуля E22 */
 #define LORA_MODE_NORMAL        0
