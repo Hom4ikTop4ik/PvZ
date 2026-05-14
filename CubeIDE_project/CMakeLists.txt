@@ -54,6 +54,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/lora_history.c
     Core/Src/lora_packet.c
     Core/Src/lora_queue.c
+    Core/Src/gps_config_sweep.c
+    Core/Src/gps_nmea.c
 )
 
 # Add include paths

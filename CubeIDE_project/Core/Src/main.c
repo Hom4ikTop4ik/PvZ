@@ -27,6 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "gps_nmea.h"
 #include "sensor_common.h"
 #include "sensor_hw390.h"
 #include "sensor_ds18b20.h"
@@ -107,27 +108,9 @@ int main(void)
   MX_USART3_UART_Init();
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
-  printf("Sensor modules test starting...\r\n");
-  
-  /* Инициализация датчиков */
-  if (hw390_init() != SENSOR_OK) {
-    printf("HW390 init failed\r\n");
-  }
-  if (ds18b20_init() != SENSOR_OK) {
-    printf("DS18B20 init failed\r\n");
-  }
-  if (ina219_init() != SENSOR_OK) {
-    printf("INA219 init failed\r\n");
-  }
-  
-  printf("All sensors initialized\r\n");
-  
-  /* Инициализация LoRa модуля E22 */
-  if (lora_app_init()) {
-    printf("LoRa initialized OK\r\n");
-  } else {
-    printf("LoRa init failed\r\n");
-  }
+  printf("GPS-only firmware starting...\r\n");
+  gps_test_init(&huart1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -137,58 +120,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    uint32_t now = HAL_GetTick() / 1000;
-    
-    /* Прокачка TX очереди LoRa (вызывать часто, non-blocking) */
-    lora_app_tx_pump();
-    
-    /* Обработка входящих RX пакетов LoRa (команды от Hub, ретрансляция) */
-    lora_app_rx_process();
-    
-    /* Опрос датчиков и отправка в LoRa каждые 10 секунд */
-    if (now - last_poll_time >= 10) {
-      last_poll_time = now;
-      
-      sensor_reading_t reading;
-
-      printf("[Main] Sensor poll at %lus\r\n", (unsigned long)now);
-      
-      /* Чтение HW390 и отправка в LoRa */
-      hw390_start();
-      while (hw390_poll() == 0);
-      if (hw390_get(&reading) == SENSOR_OK) {
-        printf("HW390: %.1f%% (raw=%d)\r\n", reading.value, reading.raw);
-        lora_app_send_humidity(reading.value);
-      } else {
-        printf("HW390: ERROR %d\r\n", reading.error);
-      }
-      
-      /* Чтение DS18B20 и отправка в LoRa */
-      ds18b20_start();
-      int result;
-      while ((result = ds18b20_poll()) == 0);
-      if (ds18b20_get(&reading) == SENSOR_OK) {
-        printf("DS18B20: %.2fC (raw=%d)\r\n", reading.value, reading.raw);
-        lora_app_send_temperature(reading.value);
-      } else {
-        printf("DS18B20: ERROR %d\r\n", reading.error);
-      }
-      
-      /* Чтение INA219 и отправка в LoRa */
-      ina219_start();
-      while (ina219_poll() == 0);
-      if (ina219_get(&reading) == SENSOR_OK) {
-        float voltage = ina219_read_voltage();
-        printf("INA219: %.0f%% (%.2fV)\r\n", reading.value, voltage);
-        lora_app_send_battery(reading.value, voltage);
-      } else {
-        printf("INA219: ERROR %d\r\n", reading.error);
-      }
-      
-      printf("---\r\n");
-    }
-    
-    HAL_Delay(50);  /* 50мс сон для экономии энергии */
+	gps_test_poll(&huart1);
+	HAL_Delay(5);
   }
   /* USER CODE END 3 */
 }
