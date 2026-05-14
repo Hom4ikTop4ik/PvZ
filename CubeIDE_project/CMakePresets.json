@@ -18,6 +18,14 @@
             }
         },
         {
+            "name": "GPS_Debug",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "GPS_ONLY": "ON"
+            }
+        },
+        {
             "name": "Release",
             "inherits": "default",
             "cacheVariables": {
@@ -29,6 +37,10 @@
         {
             "name": "Debug",
             "configurePreset": "Debug"
+        },
+        {
+            "name": "GPS_Debug",
+            "configurePreset": "GPS_Debug"
         },
         {
             "name": "Release",

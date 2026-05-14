@@ -28,6 +28,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 project(${CMAKE_PROJECT_NAME})
 message("Build type: " ${CMAKE_BUILD_TYPE})
 
+option(GPS_ONLY "Build standalone GPS test firmware without sensors and LoRa" OFF)
+if(GPS_ONLY)
+    message("GPS_ONLY: building standalone GPS test firmware")
+endif()
+
 # Enable CMake support for ASM and C languages
 enable_language(C ASM)
 
@@ -45,16 +50,26 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    Core/Src/sensor_hw390.c
-    Core/Src/sensor_ds18b20.c
-    Core/Src/sensor_ina219.c
-    Core/Src/lora_app.c
-    Core/Src/lora_command.c
-    Core/Src/lora_driver.c
-    Core/Src/lora_history.c
-    Core/Src/lora_packet.c
-    Core/Src/lora_queue.c
 )
+
+if(GPS_ONLY)
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        Core/Src/gps_config_sweep.c
+        Core/Src/gps_nmea.c
+    )
+else()
+    target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+        Core/Src/sensor_hw390.c
+        Core/Src/sensor_ds18b20.c
+        Core/Src/sensor_ina219.c
+        Core/Src/lora_app.c
+        Core/Src/lora_command.c
+        Core/Src/lora_driver.c
+        Core/Src/lora_history.c
+        Core/Src/lora_packet.c
+        Core/Src/lora_queue.c
+    )
+endif()
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -64,6 +79,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    $<$<BOOL:${GPS_ONLY}>:GPS_ONLY>
 )
 
 # Remove wrong libob.a library dependency when using cpp files

@@ -27,11 +27,15 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#ifdef GPS_ONLY
+#include "gps_nmea.h"
+#else
 #include "sensor_common.h"
 #include "sensor_hw390.h"
 #include "sensor_ds18b20.h"
 #include "sensor_ina219.h"
 #include "lora_app.h"
+#endif
 #include "usart.h"
 #include <stdio.h>
 #include <string.h>
@@ -56,7 +60,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+#ifndef GPS_ONLY
 static uint32_t last_poll_time = 0;
+#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -100,13 +106,21 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
+#ifndef GPS_ONLY
   MX_LPUART1_UART_Init();
+#endif
   MX_USART1_UART_Init();
+#ifndef GPS_ONLY
   MX_ADC1_Init();
   MX_I2C1_Init();
+#endif
   MX_USART3_UART_Init();
   MX_RTC_Init();
   /* USER CODE BEGIN 2 */
+#ifdef GPS_ONLY
+  printf("GPS-only firmware starting...\r\n");
+  gps_test_init(&huart1);
+#else
   printf("Sensor modules test starting...\r\n");
   
   /* Инициализация датчиков */
@@ -128,6 +142,7 @@ int main(void)
   } else {
     printf("LoRa init failed\r\n");
   }
+#endif
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -137,6 +152,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+#ifdef GPS_ONLY
+    gps_test_poll(&huart1);
+    HAL_Delay(5);
+#else
     uint32_t now = HAL_GetTick() / 1000;
     
     /* Прокачка TX очереди LoRa (вызывать часто, non-blocking) */
@@ -189,6 +208,7 @@ int main(void)
     }
     
     HAL_Delay(50);  /* 50мс сон для экономии энергии */
+#endif
   }
   /* USER CODE END 3 */
 }
