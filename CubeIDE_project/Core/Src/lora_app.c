@@ -155,6 +155,8 @@ void lora_app_rx_process(void)
     
     buffer[len] = '\0';
 
+    printf("[LoRa] RX: received message: %s\r\n", (char*)buffer);
+
     /* Шаг 1: Парсинг ключа и проверка на дубликат (ТОЛЬКО ключ!) */
     lora_history_key_t key;
     if (!lora_history_parse_key((char *)buffer, &key)) {
@@ -209,6 +211,21 @@ bool lora_app_send_temperature(float temp)
     return lora_queue_add(&lora_tx_queue, buffer, len);
 }
 
+bool lora_app_send_geo(float lat, float lon)
+{
+    if (!lora_packet_should_send_geo()) {
+        return false;
+    }
+    
+    uint8_t buffer[LORA_MAX_PAYLOAD_LEN];
+    memset(buffer, 0, sizeof(buffer));
+    uint16_t len = lora_packet_build_geo(buffer, sizeof(buffer), lat, lon);
+    
+    if (len == 0) return false;
+    
+    return lora_queue_add(&lora_tx_queue, buffer, len);
+}
+
 bool lora_app_send_battery(float percentage, float voltage)
 {
     if (!lora_packet_should_send_state()) {
@@ -220,6 +237,22 @@ bool lora_app_send_battery(float percentage, float voltage)
     /* Используем build_state с фиктивными rssi/snr для совместимости формата */
     uint16_t len = lora_packet_build_state(buffer, sizeof(buffer), 
                                             -100, 5.0f, percentage, true);
+    
+    if (len == 0) return false;
+    
+    return lora_queue_add(&lora_tx_queue, buffer, len);
+}
+
+bool lora_app_send_state(int16_t rssi, float snr, float battery, bool online)
+{
+    if (!lora_packet_should_send_state()) {
+        return false;
+    }
+    
+    uint8_t buffer[LORA_MAX_PAYLOAD_LEN];
+    memset(buffer, 0, sizeof(buffer));
+    uint16_t len = lora_packet_build_state(buffer, sizeof(buffer), 
+                                            rssi, snr, battery, online);
     
     if (len == 0) return false;
     

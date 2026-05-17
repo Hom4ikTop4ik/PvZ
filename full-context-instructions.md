@@ -455,28 +455,28 @@ Gateway подписывается на:
 ### 13.3 Назначенные пины
 | Пин | Функция в CubeMX | Метка (Label) | Направление | Описание (Подключение) |
 | :--- | :--- | :--- | :--- | :--- |
-| **PA0** | `GPIO_Output` | `LED_RED` | Output | Тестовый красный светодиод |
-| **PA1** | `ADC1_IN6` | `HW390_ADC` | Analog | Аналоговый сигнал от датчика влажности |
-| **PA2** | `LPUART1_TX` | `LORA_TX` | AF (TX) | Отправка команд в LoRa E22 |
-| **PA3** | `LPUART1_RX` | `LORA_RX` | AF (RX) | Прием данных от LoRa E22 |
-| **PA4** | `GPIO_Output` | `GPS_PWR` | Output | Управление MOSFET питания GPS |
-| **PA5** | `GPIO_Output` | `HW390_PWR`| Output | Управление MOSFET питания датчика влажности |
-| **PA6** | `GPIO_Output` | `DS18B20_DQ`| Output/Input| Линия данных OneWire (программный поллинг) |
-| **PA7** | `GPIO_EXTI7` | `LORA_AUX` | EXTI | Пин состояния (Busy/Ready) от LoRa E22 |
-| **PA8** | `GPIO_Output` | `DS_PWR` | Output | Управление MOSFET питания DS18B20 |
-| **PA9** | `USART1_TX` | `GPS_TX` | AF (TX) | Отправка команд конфигурации в GPS |
-| **PA10**| `USART1_RX` | `GPS_RX` | AF (RX) | Прием потока данных от GPS |
-| **PA13**| `SYS_JTMS-SWDIO` | `SWDIO` | AF | Линия данных программатора ST-Link |
-| **PA14**| `SYS_JTCK-SWCLK` | `SWCLK` | AF | Линия тактирования программатора ST-Link |
-| **PB0** | `GPIO_Output` | `LORA_M0` | Output | Управление режимом работы E22 (Pin M0) |
-| **PB1** | `GPIO_Output` | `LORA_M1` | Output | Управление режимом работы E22 (Pin M1) |
-| **PB6** | `I2C1_SCL` | `INA219_SCL`| AF (SCL) | I2C тактирование монитора питания |
-| **PB7** | `I2C1_SDA` | `INA219_SDA`| AF (SDA) | I2C данные монитора питания |
-| **PB10**| `USART3_TX` | `DEBUG_TX` | AF (TX) | Вывод отладочной информации (логгер) |
-| **PB11**| `USART3_RX` | `DEBUG_RX` | AF (RX) | Ввод отладочных команд (опционально) |
-| **PC13**| `GPIO_Input` | `USER_BTN` | Input | Кнопка на плате (активный 0 / замыкает на землю) |
-| **PC14**| `RCC_OSC32_IN` | `LSE_IN` | AF | Кварц 32.768 кГц |
-| **PC15**| `RCC_OSC32_OUT`| `LSE_OUT` | AF | Кварц 32.768 кГц |
+| **PA0** | `GPIO_Output`    | `LED_RED`    | Output   | Тестовый красный светодиод |
+| **PA1** | `ADC1_IN6`       | `HW390_ADC`  | Analog   | Аналоговый сигнал от датчика влажности |
+| **PA2** | `LPUART1_TX`     | `LORA_TX`    | AF (TX)  | Отправка команд в LoRa E22 |
+| **PA3** | `LPUART1_RX`     | `LORA_RX`    | AF (RX)  | Прием данных от LoRa E22 |
+| **PA4** | `GPIO_Output`    | `GPS_PWR`    | Output   | Управление MOSFET питания GPS |
+| **PA5** | `GPIO_Output`    | `HW390_PWR`  | Output   | Управление MOSFET питания датчика влажности |
+| **PA6** | `GPIO_Output`    | `DS18B20_DQ` | Out/Input| Линия данных OneWire (программный поллинг) |
+| **PA7** | `GPIO_EXTI7`     | `LORA_AUX`   | EXTI     | Пин состояния (Busy/Ready) от LoRa E22 |
+| **PA8** | `GPIO_Output`    | `DS_PWR`     | Output   | Управление MOSFET питания DS18B20 |
+| **PA9** | `USART1_TX`      | `GPS_TX`     | AF (TX)  | Отправка команд конфигурации в GPS |
+| **PA10**| `USART1_RX`      | `GPS_RX`     | AF (RX)  | Прием потока данных от GPS |
+| **PA13**| `SYS_JTMS-SWDIO` | `SWDIO`      | AF       | Линия данных программатора ST-Link |
+| **PA14**| `SYS_JTCK-SWCLK` | `SWCLK`      | AF       | Линия тактирования программатора ST-Link |
+| **PB0** | `GPIO_Output`    | `LORA_M0`    | Output   | Управление режимом работы E22 (Pin M0) |
+| **PB1** | `GPIO_Output`    | `LORA_M1`    | Output   | Управление режимом работы E22 (Pin M1) |
+| **PB6** | `I2C1_SCL`       | `INA219_SCL` | AF (SCL) | I2C тактирование монитора питания |
+| **PB7** | `I2C1_SDA`       | `INA219_SDA` | AF (SDA) | I2C данные монитора питания |
+| **PB10**| `USART3_TX`      | `DEBUG_TX`   | AF (TX)  | Вывод отладочной информации (логгер) |
+| **PB11**| `USART3_RX`      | `DEBUG_RX`   | AF (RX)  | Ввод отладочных команд (опционально) |
+| **PC13**| `GPIO_Input`     | `USER_BTN`   | Input    | Кнопка на плате (активный 0 / замыкает на землю) |
+| **PC14**| `RCC_OSC32_IN`   | `LSE_IN`     | AF       | Кварц 32.768 кГц |
+| **PC15**| `RCC_OSC32_OUT`  | `LSE_OUT`    | AF       | Кварц 32.768 кГц |
 
 
 ---

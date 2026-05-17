@@ -51,7 +51,7 @@ void lora_packet_timestamp(char *buffer, uint8_t len)
  * Формат: device_id;timestamp;msg_rnd_id;type;payload
  * ============================================================================ */
 
-/* Влажность: NODE_001;123456789;123456;hum;45.50 */
+/* Влажность: NODE_ID;123456789;123456;hum;45.50 */
 uint16_t lora_packet_build_humidity(uint8_t *buffer, uint16_t max_len, float humidity)
 {
     if (!buffer || max_len == 0) return 0;
@@ -66,7 +66,7 @@ uint16_t lora_packet_build_humidity(uint8_t *buffer, uint16_t max_len, float hum
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 
-/* Температура: NODE_001;123456789;123456;tmp;23.50 */
+/* Температура: NODE_ID;123456789;123456;tmp;23.50 */
 uint16_t lora_packet_build_temperature(uint8_t *buffer, uint16_t max_len, float temperature)
 {
     if (!buffer || max_len == 0) return 0;
@@ -81,7 +81,7 @@ uint16_t lora_packet_build_temperature(uint8_t *buffer, uint16_t max_len, float 
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 
-/* Координаты: NODE_001;123456789;123456;geo;55.755826,37.617300 */
+/* Координаты: NODE_ID;123456789;123456;geo;55.755826,37.617300 */
 uint16_t lora_packet_build_geo(uint8_t *buffer, uint16_t max_len, float lat, float lon)
 {
     if (!buffer || max_len == 0) return 0;
@@ -96,7 +96,7 @@ uint16_t lora_packet_build_geo(uint8_t *buffer, uint16_t max_len, float lat, flo
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 
-/* Статус: NODE_001;123456789;123456;stt;-120,5.50,95.0,1 */
+/* Статус: NODE_ID;123456789;123456;stt;-120,5.50,95.0,1 */
 uint16_t lora_packet_build_state(uint8_t *buffer, uint16_t max_len, 
                                    int16_t rssi, float snr, float battery, bool online)
 {

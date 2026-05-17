@@ -20,7 +20,7 @@
 
 /* Node ID (строка) - идентификатор этого узла в сети */
 #ifndef LORA_NODE_ID
-#define LORA_NODE_ID            "NODE_001"
+#define LORA_NODE_ID            "NODE_458"
 #endif
 
 /* Таймауты UART и LoRa операций */

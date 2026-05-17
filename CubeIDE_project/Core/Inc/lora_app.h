@@ -38,6 +38,8 @@ void lora_app_rx_process(void);
 bool lora_app_send_humidity(float humidity);
 bool lora_app_send_temperature(float temp);
 bool lora_app_send_battery(float percentage, float voltage);
+bool lora_app_send_geo(float lat, float lon);
+bool lora_app_send_state(int16_t rssi, float snr, float battery, bool online);
 
 /* Ретрансляция чужого пакета (callback для lora_command) */
 bool lora_app_retransmit(const uint8_t *payload, uint16_t len);

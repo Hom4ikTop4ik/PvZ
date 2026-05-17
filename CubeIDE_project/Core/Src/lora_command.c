@@ -158,7 +158,7 @@ bool lora_command_process_payload(const char *payload, const char *local_node_id
     }
     else {
         /* Чужой пакет - ретранслируем */
-        printf("[ECHO] Retransmit from %s\r\n", device_id);
+        printf("[LoRa ECHO] Retransmit from %s\r\n", device_id);
         
         if (retransmit_cb) {
             /* Добавляем в TX очередь для ретрансляции */

@@ -136,13 +136,13 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     uint32_t now = HAL_GetTick() / 1000;
-    
+
     /* Опрос каждые 1 секунд */
     if (now - last_poll_time >= 1) {
       last_poll_time = now;
-      
+
       sensor_reading_t reading;
-      
+
       printf("SystemCoreClock from HAL: %ld Hz\n", SystemCoreClock);
 
       /* Чтение HW390 */
@@ -153,7 +153,7 @@ int main(void)
       } else {
         printf("HW390: ERROR %d\r\n", reading.error);
       }
-      
+
       /* Чтение DS18B20 */
       ds18b20_start();
       int result;
@@ -165,7 +165,7 @@ int main(void)
       } else {
         printf("DS18B20: ERROR %d\r\n", reading.error);
       }
-      
+
       /* Чтение INA219 */
       ina219_start();
       while (ina219_poll() == 0);
@@ -175,10 +175,10 @@ int main(void)
       } else {
         printf("INA219: ERROR %d\r\n", reading.error);
       }
-      
+
       printf("---\r\n");
     }
-    
+
     HAL_Delay(100);  /* 100мс сон между проверками */
   }
   /* USER CODE END 3 */
