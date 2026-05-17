@@ -7,7 +7,7 @@
 
 #define GPS_TEST_BAUD_RATE 9600U
 #define GPS_LINE_MAX 512U
-#define GPS_DMA_RX_SIZE 1024U
+#define GPS_DMA_RX_SIZE 4096U
 #define GPS_POLL_BUDGET_BYTES 512U
 #define GPS_STATUS_INTERVAL_MS 10000U
 #define GPS_LEGACY_UBX_CONFIG 1
@@ -384,6 +384,24 @@ static void gps_start_rx_dma(UART_HandleTypeDef *gps_uart)
     }
 }
 
+static void gps_write_config(UART_HandleTypeDef *gps_uart) {
+    /* Send UBX configuration commands (blocking for now) */
+    /* TODO: Review possibility Refactor to non-blocking with ACK handling and sub-states */
+
+    printf("[GPS] Write GLONASS config\r\n");
+    //printf("[GPS] Applying legacy GNSS config: GPS/SBAS/QZSS off, GLONASS on\r\n");
+    send_ubx(gps_uart, 0x06, 0x3E, payload_cfg_gnss, sizeof(payload_cfg_gnss));
+    HAL_Delay(100);
+
+    //printf("[GPS] Saving GNSS config\r\n");
+    send_ubx(gps_uart, 0x06, 0x09, payload_cfg_save, sizeof(payload_cfg_save));
+    HAL_Delay(100);
+
+    //printf("[GPS] Cold-starting GPS module\r\n");
+    send_ubx(gps_uart, 0x06, 0x04, payload_cfg_rst, sizeof(payload_cfg_rst));
+    HAL_Delay(GPS_GEO_INIT_DELAY_MS);
+}
+
 void gps_test_init(UART_HandleTypeDef *gps_uart)
 {
     gps_line_len = 0U;
@@ -403,17 +421,7 @@ void gps_test_init(UART_HandleTypeDef *gps_uart)
     gps_flush_rx(gps_uart);
 
 #if GPS_LEGACY_UBX_CONFIG
-    printf("Applying legacy GNSS config: GPS/SBAS/QZSS off, GLONASS on\r\n");
-    send_ubx(gps_uart, 0x06, 0x3E, payload_cfg_gnss, sizeof(payload_cfg_gnss));
-    HAL_Delay(500);
-
-    printf("Saving GNSS config\r\n");
-    send_ubx(gps_uart, 0x06, 0x09, payload_cfg_save, sizeof(payload_cfg_save));
-    HAL_Delay(500);
-
-    printf("Cold-starting GPS module\r\n");
-    send_ubx(gps_uart, 0x06, 0x04, payload_cfg_rst, sizeof(payload_cfg_rst));
-    HAL_Delay(500);
+    gps_write_config(gps_uart);
 #endif
 
     gps_flush_rx(gps_uart);
@@ -669,28 +677,9 @@ void gps_tick(void)
             
         case GPS_STATE_WAIT_POWER_ON:
             if (now - gps_state_start_ms >= GPS_POWER_ON_DELAY_MS) {
-                gps_state = GPS_STATE_GEO_INIT;
+                gps_state = GPS_STATE_COLLECTING;
                 gps_state_start_ms = now;
             }
-            break;
-            
-        case GPS_STATE_GEO_INIT:
-            /* Send UBX configuration commands (blocking for now) */
-            /* TODO: Refactor to non-blocking with ACK handling and sub-states */
-            printf("GPS: Applying legacy GNSS config\r\n");
-            send_ubx(&huart1, 0x06, 0x3E, payload_cfg_gnss, sizeof(payload_cfg_gnss));
-            HAL_Delay(1000);
-
-            printf("GPS: Saving GNSS config\r\n");
-            send_ubx(&huart1, 0x06, 0x09, payload_cfg_save, sizeof(payload_cfg_save));
-            HAL_Delay(1000);
-
-            printf("GPS: Cold-starting GPS module\r\n");
-            send_ubx(&huart1, 0x06, 0x04, payload_cfg_rst, sizeof(payload_cfg_rst));
-            HAL_Delay(5000);
-
-            gps_state = GPS_STATE_COLLECTING;
-            gps_state_start_ms = now;
             break;
             
         case GPS_STATE_COLLECTING:
@@ -720,10 +709,10 @@ void gps_tick(void)
                     gps_current_fix.hdop, GPS_MAX_HDOP);
 
             if (gps_current_fix.has_lat && gps_current_fix.has_lon && 
-//                gps_current_fix.quality >= GPS_MIN_QUALITY &&
-//                gps_current_fix.num_sats >= GPS_MIN_SATELLITES &&
-//                gps_current_fix.hdop <= GPS_MAX_HDOP &&
-                1) {
+                // gps_current_fix.quality >= GPS_MIN_QUALITY &&
+                // gps_current_fix.num_sats >= GPS_MIN_SATELLITES &&
+                // gps_current_fix.hdop <= GPS_MAX_HDOP &&
+                true) {
                 
                 /* Validate coordinate ranges */
                 bool lat_valid = (gps_current_fix.lat >= -90.0f && gps_current_fix.lat <= 90.0f);

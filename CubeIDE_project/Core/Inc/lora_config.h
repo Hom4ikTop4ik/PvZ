@@ -19,14 +19,19 @@
 #define LORA_HISTORY_SIZE       128     /* количество ключей для дедупликации */
 
 /* Node ID (строка) - идентификатор этого узла в сети */
+#define LORA_UNASSIGNED_NODE_ID "0"
+#define LORA_NODE_ID_MAX_LEN    16
+#define LORA_NODE_MAC_MAX_LEN   32
+#define LORA_JOIN_INTERVAL_MS   5000
+
 #ifndef LORA_NODE_ID
-#define LORA_NODE_ID            "NODE_458"
+#define LORA_NODE_ID            LORA_UNASSIGNED_NODE_ID
 #endif
 
 /* Таймауты UART и LoRa операций */
 #define LORA_UART_TIMEOUT_MS    100     /* таймаут операций UART (мс) */
 #define LORA_CHAR_TIMEOUT_MS    10      /* таймаут между символами (мс) - для read_line */
-#define LORA_LINE_MAX_TIMEOUT_MS 500   /* максимальное время ожидания строки (мс) */
+#define LORA_LINE_MAX_TIMEOUT_MS 1500   /* максимальное время ожидания строки (мс) */
 
 /* Пин AUX для проверки готовности модуля E22 */
 /* E22 устанавливает AUX=0 во время передачи/инициализации, AUX=1 когда готов */

@@ -1,4 +1,5 @@
 #include "lora_packet.h"
+#include "lora_identity.h"
 #include "main.h"
 #include <stdio.h>
 #include <string.h>
@@ -42,6 +43,7 @@ uint32_t lora_packet_random_id(void)
 /* Timestamp: используем HAL_GetTick как приблизительное время в секундах */
 void lora_packet_timestamp(char *buffer, uint8_t len)
 {
+	// TODO: ISO timestamp format
     uint32_t seconds = HAL_GetTick() / 1000;
     snprintf(buffer, len, "%lu", (unsigned long)seconds);
 }
@@ -51,7 +53,8 @@ void lora_packet_timestamp(char *buffer, uint8_t len)
  * Формат: device_id;timestamp;msg_rnd_id;type;payload
  * ============================================================================ */
 
-/* Влажность: NODE_ID;123456789;123456;hum;45.50 */
+/* Влажность (пример): NODE_ID;123456789;123456;hum;45.50 */
+// Возвращает длину пакета или 0 при ошибке
 uint16_t lora_packet_build_humidity(uint8_t *buffer, uint16_t max_len, float humidity)
 {
     if (!buffer || max_len == 0) return 0;
@@ -61,12 +64,17 @@ uint16_t lora_packet_build_humidity(uint8_t *buffer, uint16_t max_len, float hum
     uint32_t rnd = lora_packet_random_id();
     
     int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%.2f",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_HUM, humidity);
+                          lora_identity_get_node_id(),
+						  timestamp,
+						  (unsigned long)rnd,
+						  LORA_MSG_HUM,
+						  humidity);
     
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 
-/* Температура: NODE_ID;123456789;123456;tmp;23.50 */
+/* Температура (пример): NODE_ID;123456789;123456;tmp;23.50 */
+// Возвращает длину пакета или 0 при ошибке
 uint16_t lora_packet_build_temperature(uint8_t *buffer, uint16_t max_len, float temperature)
 {
     if (!buffer || max_len == 0) return 0;
@@ -76,12 +84,17 @@ uint16_t lora_packet_build_temperature(uint8_t *buffer, uint16_t max_len, float 
     uint32_t rnd = lora_packet_random_id();
     
     int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%.2f",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_TMP, temperature);
+                          lora_identity_get_node_id(),
+						  timestamp,
+						  (unsigned long)rnd,
+						  LORA_MSG_TMP,
+						  temperature);
     
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 
-/* Координаты: NODE_ID;123456789;123456;geo;55.755826,37.617300 */
+/* Координаты (пример): NODE_ID;123456789;123456;geo;55.755826,37.617300 */
+// Возвращает длину пакета или 0 при ошибке
 uint16_t lora_packet_build_geo(uint8_t *buffer, uint16_t max_len, float lat, float lon)
 {
     if (!buffer || max_len == 0) return 0;
@@ -91,12 +104,17 @@ uint16_t lora_packet_build_geo(uint8_t *buffer, uint16_t max_len, float lat, flo
     uint32_t rnd = lora_packet_random_id();
     
     int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%.6f,%.6f",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_GEO, lat, lon);
+                          lora_identity_get_node_id(),
+						  timestamp,
+						  (unsigned long)rnd,
+						  LORA_MSG_GEO,
+						  lat, lon);
     
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 
-/* Статус: NODE_ID;123456789;123456;stt;-120,5.50,95.0,1 */
+/* Статус (пример): NODE_ID;123456789;123456;stt;-120,5.50,95.0,online */
+// Возвращает длину пакета или 0 при ошибке
 uint16_t lora_packet_build_state(uint8_t *buffer, uint16_t max_len, 
                                    int16_t rssi, float snr, float battery, bool online)
 {
@@ -106,10 +124,33 @@ uint16_t lora_packet_build_state(uint8_t *buffer, uint16_t max_len,
     lora_packet_timestamp(timestamp, sizeof(timestamp));
     uint32_t rnd = lora_packet_random_id();
     
-    int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%d,%.2f,%.1f,%d",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_STT,
-                          (int)rssi, snr, battery, online ? 1 : 0);
+    int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%d,%.2f,%.1f,%s",
+                          lora_identity_get_node_id(),
+						  timestamp,
+						  (unsigned long)rnd,
+						  LORA_MSG_STT,
+                          (int)rssi, snr, battery, online ? "online" : "offline");
     
+    return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
+}
+
+/* Пакет подключения */
+// Возвращает длину пакета или 0 при ошибке
+uint16_t lora_packet_build_join(uint8_t *buffer, uint16_t max_len, const char *node_identity_mac)
+{
+    if (!buffer || max_len == 0) return 0;
+
+    char timestamp[32];
+    lora_packet_timestamp(timestamp, sizeof(timestamp));
+    uint32_t rnd = lora_packet_random_id();
+
+    int written = snprintf((char*)buffer, max_len, "%s;%s;%lu;%s;%s",
+                           lora_identity_get_node_id(),
+                           timestamp,
+                           (unsigned long)rnd,
+                           LORA_MSG_JOIN,
+                           node_identity_mac);
+
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 

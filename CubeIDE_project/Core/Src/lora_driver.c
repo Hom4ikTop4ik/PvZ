@@ -1,4 +1,5 @@
 #include "lora_driver.h"
+#include "sensor_common.h"
 #include "usart.h"
 #include "gpio.h"
 #include <string.h>
@@ -275,7 +276,7 @@ void lora_driver_set_mode(uint8_t mode)
 /* ambient=true: read ambient noise RSSI (register 0x00) */
 /* ambient=false: read last packet RSSI (register 0x01) */
 /* Returns RSSI in dBm (negative value), or 0 on error */
-int8_t lora_driver_read_rssi(bool ambient)
+int16_t lora_driver_read_rssi(bool ambient)
 {
     uint8_t cmd[6] = {0xC0, 0xC1, 0xC2, 0xC3, 0x00, 0x01};  /* Read ambient RSSI */
     uint8_t response[8] = {0};
@@ -291,14 +292,14 @@ int8_t lora_driver_read_rssi(bool ambient)
     /* Send RSSI read command */
     if (HAL_UART_Transmit(&hlpuart1, cmd, sizeof(cmd), 100) != HAL_OK) {
         lora_driver_set_mode(0);  /* Restore normal mode */
-        return 0;
+        return STATE_ERROR_RSSI;
     }
 
     /* Read response (C1 + address + length + value) */
     /* Expected response: C1 00 01 <value> */
     if (!lora_driver_read_line(response, sizeof(response), &len)) {
         lora_driver_set_mode(0);  /* Restore normal mode */
-        return 0;
+        return STATE_ERROR_RSSI;
     }
 
     /* Restore normal mode */
@@ -311,7 +312,7 @@ int8_t lora_driver_read_rssi(bool ambient)
         return -(int8_t)(rssi_raw / 2);
     }
 
-    return 0;
+    return STATE_ERROR_RSSI;
 }
 
 /**

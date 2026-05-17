@@ -12,15 +12,15 @@ extern uint16_t gps_dma_tail;
 
 /* State machine timeouts */
 #define GPS_POWER_ON_DELAY_MS 100
-#define GPS_GEO_INIT_DELAY_MS 5000
-#define GPS_COLLECT_TIMEOUT_MS (10*60*60*1000)  /* 10 hours */
+#define GPS_GEO_INIT_DELAY_MS 500
+#define GPS_COLLECT_TIMEOUT_MS (10*60*1000)  /* 10 minutes */
 
 /* GPS quality thresholds */
 #define GPS_MIN_QUALITY 1
 #define GPS_MIN_SATELLITES 4
 #define GPS_MAX_HDOP 2.0f
 #define GPS_NUM_COORDINATES_TO_COLLECT 5
-#define GPS_FIX_TIMEOUT_MS (10*60*60*1000)  /* 10 hours */
+#define GPS_FIX_TIMEOUT_MS (10*60*1000)  /* 10 minutes */
 
 /* GPS fix structure with quality metrics */
 typedef struct {
@@ -42,10 +42,9 @@ typedef struct {
 
 /* State machine states */
 typedef enum {
-    GPS_STATE_IDLE,
+    GPS_STATE_IDLE = 0,
     GPS_STATE_POWER_ON,
     GPS_STATE_WAIT_POWER_ON,
-    GPS_STATE_GEO_INIT,
     GPS_STATE_COLLECTING,
     GPS_STATE_CALC_BEST,
     GPS_STATE_READ,

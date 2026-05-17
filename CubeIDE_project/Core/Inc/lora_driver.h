@@ -65,7 +65,7 @@ void lora_driver_set_mode(uint8_t mode);
 
 /* Read RSSI from LoRa module (requires config mode) */
 /* Returns RSSI in dBm (negative value), or 0 on error */
-int8_t lora_driver_read_rssi(bool ambient);
+int16_t lora_driver_read_rssi(bool ambient);
 lora_result_t lora_driver_read_rssi_and_snr(int16_t *out_rssi_packet, float *out_snr);
 
 #endif /* LORA_DRIVER_H */

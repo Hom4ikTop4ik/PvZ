@@ -8,6 +8,11 @@
 #define HW390_RAW_DRY_DEFAULT  3000  /* ADC значение для сухой почвы */
 #define HW390_RAW_WET_DEFAULT  1500  /* ADC значение для влажной почвы (ниже ADC = влажнее) */
 
+/* Интервалы для калибровки */
+#define HW390_CALIBRATION_BOOT_WINDOW_MS 5000
+#define HW390_CALIBRATION_DURATION_MS 10000
+#define HW390_CALIBRATION_POLL_INTERVAL_MS 50
+
 /* Error values */
 #define HW390_ERROR_VALUE -500.0f
 
@@ -17,7 +22,7 @@
 
 /* State machine states */
 typedef enum {
-    HW390_STATE_IDLE,
+    HW390_STATE_IDLE = 0,
     HW390_STATE_POWER_ON_DELAY,
     HW390_STATE_MEASURING,
     HW390_STATE_READ,
@@ -50,9 +55,9 @@ void hw390_tick(void);
 int hw390_get_history(sensor_history_t *out);
 void hw390_clear_history(void);
 
-/* Получение/установка калибровки */
-uint16_t hw390_get_raw_dry(void);
-uint16_t hw390_get_raw_wet(void);
+/* Калибровка */
+void hw390_run_calibration(void);
 void hw390_set_calibration(uint16_t dry, uint16_t wet);
+void hw390_get_calibration(uint16_t *dry, uint16_t *wet);
 
 #endif /* SENSOR_HW390_H */

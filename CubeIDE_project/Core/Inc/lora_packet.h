@@ -6,18 +6,22 @@
 #include "lora_config.h"
 
 /* ============================================================================
- * LoRa Packet Builder
- * ============================================================================
- * Формирует текстовые пакеты формата: device_id;timestamp;msg_rnd_id;type;payload
- * Поддерживает типы: hum, tmp, geo, stt (humidity, temperature, geo, status)
- * ============================================================================ */
+* LoRa Packet Builder
+* ============================================================================
+* Формирует текстовые пакеты формата: device_id;timestamp;msg_rnd_id;type;payload
+* Поддерживает типы: hum, tmp, geo, stt (humidity, temperature, geo, status)
+* ============================================================================ */
 
 /* Типы сообщений (строковые константы) */
+
+
 #define LORA_MSG_HUM    "hum"   /* влажность */
 #define LORA_MSG_TMP    "tmp"   /* температура */
 #define LORA_MSG_GEO    "geo"   /* координаты */
 #define LORA_MSG_STT    "stt"   /* статус */
 #define LORA_MSG_CMD    "cmd"   /* команда */
+#define LORA_MSG_JOIN   "join"  /* подключение к mesh-сети*/
+#define LORA_MSG_JOIN_ACK "join_ack"
 
 /* Флаги включения отправки (глобальные переменные) */
 extern volatile bool lora_enable_humidity;
@@ -46,6 +50,7 @@ uint16_t lora_packet_build_temperature(uint8_t *buffer, uint16_t max_len, float 
 uint16_t lora_packet_build_geo(uint8_t *buffer, uint16_t max_len, float lat, float lon);
 uint16_t lora_packet_build_state(uint8_t *buffer, uint16_t max_len, 
                                    int16_t rssi, float snr, float battery, bool online);
+uint16_t lora_packet_build_join(uint8_t *buffer, uint16_t max_len, const char *node_identity_mac);
 
 /* Проверка нужно ли отправлять (по флагам enable или force) */
 bool lora_packet_should_send_humidity(void);

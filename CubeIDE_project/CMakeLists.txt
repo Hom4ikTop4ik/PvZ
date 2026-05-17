@@ -52,10 +52,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/lora_command.c
     Core/Src/lora_driver.c
     Core/Src/lora_history.c
+    Core/Src/lora_identity.c
+    Core/Src/lora_join.c
     Core/Src/lora_packet.c
     Core/Src/lora_queue.c
     Core/Src/gps_config_sweep.c
     Core/Src/gps_nmea.c
+    Core/Src/hw390_flash.c
 )
 
 # Add include paths

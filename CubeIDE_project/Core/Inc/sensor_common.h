@@ -15,6 +15,11 @@
 #define SENSOR_HISTORY_SIZE 32
 #endif
 
+/* State measurement error values */
+#define STATE_ERROR_RSSI -999
+#define STATE_ERROR_SNR -999.0f
+#define STATE_ERROR_BATTERY -99.0f
+
 /* Структура для хранения показаний датчика */
 typedef struct {
     float value;           /* откалиброванное значение (влажность %, температура °C, напряжение V) */

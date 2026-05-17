@@ -1,8 +1,10 @@
 #include "lora_app.h"
-#include "lora_driver.h"
-#include "lora_packet.h"
 #include "lora_command.h"
 #include "lora_config.h"
+#include "lora_driver.h"
+#include "lora_identity.h"
+#include "lora_join.h"
+#include "lora_packet.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -25,6 +27,8 @@ bool lora_app_init(void)
     /* Инициализация компонентов */
     lora_queue_init(&lora_tx_queue);
     lora_history_init(&lora_rx_history);
+    lora_identity_init();
+    lora_join_init();
     lora_packet_init();
     
     /* Установка callback для ретрансляции чужих пакетов */
@@ -173,9 +177,18 @@ void lora_app_rx_process(void)
     
     /* Шаг 3: Новый пакет - добавляем в историю */
     lora_history_add(&lora_rx_history, &key);
-    
+
+    lora_join_result_t join_result = lora_join_process_payload((char *)buffer);
+    if (join_result == LORA_JOIN_CONSUMED) {
+        return;
+    }
+    if (join_result == LORA_JOIN_RETRANSMIT) {
+        lora_app_retransmit(buffer, len);
+        return;
+    }
+
     /* Шаг 4: Обработка команды или ретрансляция */
-    lora_command_process_payload((char *)buffer, LORA_NODE_ID);
+    lora_command_process_payload((char *)buffer, lora_identity_get_node_id());
 }
 
 /* ============================================================================
@@ -183,6 +196,10 @@ void lora_app_rx_process(void)
  * ============================================================================ */
 bool lora_app_send_humidity(float humidity)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_humidity()) {
         return false;
     }
@@ -198,6 +215,10 @@ bool lora_app_send_humidity(float humidity)
 
 bool lora_app_send_temperature(float temp)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_temperature()) {
         return false;
     }
@@ -213,6 +234,10 @@ bool lora_app_send_temperature(float temp)
 
 bool lora_app_send_geo(float lat, float lon)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_geo()) {
         return false;
     }
@@ -228,6 +253,10 @@ bool lora_app_send_geo(float lat, float lon)
 
 bool lora_app_send_battery(float percentage, float voltage)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_state()) {
         return false;
     }
@@ -245,6 +274,10 @@ bool lora_app_send_battery(float percentage, float voltage)
 
 bool lora_app_send_state(int16_t rssi, float snr, float battery, bool online)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_state()) {
         return false;
     }
@@ -253,9 +286,25 @@ bool lora_app_send_state(int16_t rssi, float snr, float battery, bool online)
     memset(buffer, 0, sizeof(buffer));
     uint16_t len = lora_packet_build_state(buffer, sizeof(buffer), 
                                             rssi, snr, battery, online);
-    
+
     if (len == 0) return false;
     
+    return lora_queue_add(&lora_tx_queue, buffer, len);
+}
+
+bool lora_app_send_join(const char *node_identity_mac)
+{
+    if (lora_identity_is_assigned()) {
+        // Уже есть node_id — join не нужен
+        return false;
+    }
+
+    uint8_t buffer[LORA_MAX_PAYLOAD_LEN];
+    memset(buffer, 0, sizeof(buffer));
+    uint16_t len = lora_packet_build_join(buffer, sizeof(buffer), node_identity_mac);
+
+    if (len == 0) return false;
+
     return lora_queue_add(&lora_tx_queue, buffer, len);
 }
 

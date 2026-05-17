@@ -28,7 +28,7 @@
 
 /* State machine states */
 typedef enum {
-    INA219_STATE_IDLE,
+    INA219_STATE_IDLE = 0,
     INA219_STATE_READ_VOLTAGE,
     INA219_STATE_READ_CURRENT,
     INA219_STATE_ERROR

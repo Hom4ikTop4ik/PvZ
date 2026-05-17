@@ -131,8 +131,6 @@ int ina219_get_result(sensor_reading_t *out)
 /* State machine tick - call every main loop iteration */
 void ina219_tick(void)
 {
-    uint32_t now = HAL_GetTick();
-    
     switch (ina219_state) {
         case INA219_STATE_IDLE:
             /* Do nothing, wait for request */

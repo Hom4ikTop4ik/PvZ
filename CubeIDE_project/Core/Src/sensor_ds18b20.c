@@ -32,8 +32,6 @@ static sensor_history_t history = {0};
 /* Internal variables for OneWire protocol */
 static uint8_t scratchpad[9] = {0};
 static uint8_t byte_idx = 0;
-static uint8_t bit_idx = 0;
-static uint8_t current_byte = 0;
 
 /* Точная задержка в микросекундах через DWT */
 static void delay_us(uint32_t us)

@@ -40,6 +40,7 @@ bool lora_app_send_temperature(float temp);
 bool lora_app_send_battery(float percentage, float voltage);
 bool lora_app_send_geo(float lat, float lon);
 bool lora_app_send_state(int16_t rssi, float snr, float battery, bool online);
+bool lora_app_send_join(const char *node_identity_mac);
 
 /* Ретрансляция чужого пакета (callback для lora_command) */
 bool lora_app_retransmit(const uint8_t *payload, uint16_t len);
