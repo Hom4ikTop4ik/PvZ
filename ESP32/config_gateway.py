@@ -1,12 +1,14 @@
 # config_gateway.py
 
 # --- Настройки Wi-Fi ---
-# WIFI_SSID = "HUAWEI-T1CNQ1" # Ваша сеть
-# WIFI_PASS = "Wifi_password" # Ваш пароль
-# WIFI_SSID = "КаНура" # Ваша сеть
-# WIFI_PASS = "diy@or@die" # Ваш пароль
-WIFI_SSID = "Xiaomi 12 Lite" # Ваша сеть
-WIFI_PASS = "naagliv324klovNit7io9" # Ваш пароль
+# WIFI_SSID = "HUAWEI-T1CNQ1" # пример сети
+# WIFI_PASS = "Wifi_password" # пример пароля
+# WIFI_SSID = "КаНура" # пример сети
+# WIFI_PASS = "diy@or@die" # пример пароля
+# WIFI_SSID = "Xiaomi 12 Lite" # пример сети
+# WIFI_PASS = "naagliv324klovNit7io9" # пример пароля
+WIFI_SSID = "NO_SSID"
+WIFI_PASS = "NO_PASSWORD"
 
 # --- Настройки MQTT Брокера ---
 # ВАЖНО: Убедитесь, что IP 192.168.1.55 действительно принадлежит вашему ПК.
@@ -67,6 +69,9 @@ LORA_BAUDRATE = 9600   # Скорость общения с модулем
 PIN_BUTTON = 9 # boot кнопка (нажато=0, отпущено=1)
 PIN_LED = 8    # встроенный светодиод (0=светит, 1=тухнет)
 
-
+# --- Config portal ---
+# После reset gateway ждет это время, чтобы пользователь успел зажать BOOT.
+CONFIG_PORTAL_BOOT_WINDOW_MS = 10000
+CONFIG_PORTAL_BOOT_HOLD_MS = 1000
 
 

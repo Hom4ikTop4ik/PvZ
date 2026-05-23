@@ -19,13 +19,13 @@
 #define LORA_CMD_INTERVAL     "interval"
 #define LORA_CMD_INTERVAL_HUM "hum"
 #define LORA_CMD_INTERVAL_TMP "tmp"
-#define LORA_CMD_INTERVAL_GEO "gps"
+#define LORA_CMD_INTERVAL_GEO "geo"
 #define LORA_CMD_INTERVAL_STT "stt"
 
 #define LORA_CMD_FORCE_ALL  "fetch"
 #define LORA_CMD_FORCE_HUM  "fetch_hum"
 #define LORA_CMD_FORCE_TMP  "fetch_tmp"
-#define LORA_CMD_FORCE_GEO  "fetch_gps"
+#define LORA_CMD_FORCE_GEO  "fetch_geo"
 #define LORA_CMD_FORCE_STT  "fetch_stt"
 
 /* TODO: заготовки на будущее */

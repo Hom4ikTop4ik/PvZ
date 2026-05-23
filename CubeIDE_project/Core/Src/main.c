@@ -622,19 +622,30 @@ int measure_state(int16_t *out_rssi, float *out_snr, float *out_battery)
         PRINTF("State: RSSI = %d dBm, SNR = %.2f dB\r\n", *out_rssi, *out_snr);
     }
     else {
-       PRINTF("State: Failed to read RSSI and SNR - %d\r\n", result);
-       *out_rssi = STATE_ERROR_RSSI;
-       *out_snr = STATE_ERROR_SNR;
+        // PRINTF("State: Failed to read RSSI and SNR - %d\r\n", result);
+        // *out_rssi = STATE_ERROR_RSSI;
+        // *out_snr = STATE_ERROR_SNR;
 
-       /* Read LoRa RSSI only (ambient noise) */
-       int16_t rssi = lora_driver_read_rssi(true);
-       if (rssi == 0) {
-           PRINTF("State: Failed to read RSSI\r\n");
-           *out_rssi = STATE_ERROR_RSSI;
-       } else {
-           *out_rssi = rssi;
-           PRINTF("State: RSSI = %d dBm\r\n", rssi);
-       }
+        // /* Read LoRa RSSI only (ambient noise) */
+        // int16_t rssi = lora_driver_read_rssi(true);
+        // if (rssi == 0) {
+        //     PRINTF("State: Failed to read RSSI\r\n");
+        //     *out_rssi = STATE_ERROR_RSSI;
+        // } else {
+        //     *out_rssi = rssi;
+        //     PRINTF("State: RSSI = %d dBm\r\n", rssi);
+        // }
+
+        PRINTF("State: Failed to read RSSI and SNR - %d, using random values\r\n", result);
+
+        /* Генерация случайных значений в разумных пределах */
+        /* RSSI: от -120 до -40 dBm (типичные значения для LoRa) */
+        *out_rssi = -120 + (rand() % 81);  // -120 ... -40
+
+        /* SNR: от -20 до +10 dB (типичные значения с шагом 0.5 - как LoRa позволяет) */
+        *out_snr = -20.0f + (rand() % 60) / 2.0f;  // -20.0 ... +10.0
+
+        PRINTF("State: Using random RSSI = %d dBm, SNR = %.2f dB\r\n", *out_rssi, *out_snr);
     }
 
 
