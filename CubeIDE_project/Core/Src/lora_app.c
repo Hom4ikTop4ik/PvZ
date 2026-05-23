@@ -3,6 +3,8 @@
 #include "lora_packet.h"
 #include "lora_command.h"
 #include "lora_config.h"
+#include "lora_identity.h"
+#include "lora_join.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -25,6 +27,8 @@ bool lora_app_init(void)
     /* Инициализация компонентов */
     lora_queue_init(&lora_tx_queue);
     lora_history_init(&lora_rx_history);
+    lora_identity_init();
+    lora_join_init();
     lora_packet_init();
     
     /* Установка callback для ретрансляции чужих пакетов */
@@ -52,6 +56,8 @@ bool lora_app_init(void)
  * ============================================================================ */
 lora_pump_result_t lora_app_tx_pump(void)
 {
+    lora_join_process_tick(&lora_tx_queue);
+
     /* Проверка pacing */
     if (!lora_queue_can_send_now(&lora_tx_queue)) {
         return LORA_PUMP_WAIT;
@@ -171,9 +177,18 @@ void lora_app_rx_process(void)
     
     /* Шаг 3: Новый пакет - добавляем в историю */
     lora_history_add(&lora_rx_history, &key);
+
+    lora_join_result_t join_result = lora_join_process_payload((char *)buffer);
+    if (join_result == LORA_JOIN_CONSUMED) {
+        return;
+    }
+    if (join_result == LORA_JOIN_RETRANSMIT) {
+        lora_app_retransmit(buffer, len);
+        return;
+    }
     
     /* Шаг 4: Обработка команды или ретрансляция */
-    lora_command_process_payload((char *)buffer, LORA_NODE_ID);
+    lora_command_process_payload((char *)buffer, lora_identity_get_node_id());
 }
 
 /* ============================================================================
@@ -181,6 +196,10 @@ void lora_app_rx_process(void)
  * ============================================================================ */
 bool lora_app_send_humidity(float humidity)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_humidity()) {
         return false;
     }
@@ -196,6 +215,10 @@ bool lora_app_send_humidity(float humidity)
 
 bool lora_app_send_temperature(float temp)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_temperature()) {
         return false;
     }
@@ -211,6 +234,10 @@ bool lora_app_send_temperature(float temp)
 
 bool lora_app_send_battery(float percentage, float voltage)
 {
+    if (!lora_identity_is_assigned()) {
+        return false;
+    }
+
     if (!lora_packet_should_send_state()) {
         return false;
     }

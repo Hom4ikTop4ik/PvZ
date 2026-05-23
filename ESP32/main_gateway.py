@@ -9,6 +9,9 @@ import time
 
 from lora_mini_lib import LoRaMiniLib
 import config_gateway as config_ga
+import gateway_config_portal
+import gateway_settings
+import node_registry
 
 from utils import RingBuffer, LoRaTxQueue, lora_tx_pump
 
@@ -19,17 +22,35 @@ from utils import RingBuffer, LoRaTxQueue, lora_tx_pump
 led = machine.Pin(config_ga.PIN_LED, machine.Pin.OUT, value=1)  # выключен
 button = machine.Pin(config_ga.PIN_BUTTON, machine.Pin.IN, machine.Pin.PULL_UP)
 
-for i in range(20):
-    if not button.value():
-        # config_ga.WIFI_SSID = "BDD"
-        # config_ga.WIFI_PASS = "aboba123"
-        config_ga.WIFI_SSID = "B"
-        config_ga.WIFI_PASS = "1111117a"
-        break
-    led.value(1)
-    time.sleep(0.1)
-    led.value(0)
-    time.sleep(0.1)
+settings = gateway_settings.load_settings(config_ga.TENANT)
+current_tenant = gateway_settings.apply_settings(config_ga, settings)
+print("[CONFIG] Tenant:", current_tenant)
+
+
+def config_portal_requested(window_ms=5000, hold_ms=900):
+    print("[CONFIG] Hold BOOT now to open config portal...")
+    start = time.ticks_ms()
+    held_since = None
+
+    while time.ticks_diff(time.ticks_ms(), start) < window_ms:
+        if button.value() == 0:
+            if held_since is None:
+                held_since = time.ticks_ms()
+            led.value(0)
+            time.sleep_ms(70)
+            led.value(1)
+            time.sleep_ms(70)
+            if time.ticks_diff(time.ticks_ms(), held_since) >= hold_ms:
+                return True
+        else:
+            held_since = None
+            time.sleep_ms(50)
+
+    return False
+
+
+if config_portal_requested():
+    gateway_config_portal.run_config_portal(current_tenant)
 
 # Глобальный клиент
 mqtt_client = None
@@ -39,17 +60,8 @@ print("Init LoRa...")
 lora = LoRaMiniLib(config_ga)
 print("LoRa OK")
 
-# Таймер для антидребезга кнопки
-last_button_press_time = 0
-DEBOUNCE_MS = 300
-
-# Тестовое сообщение
-def create_test_message():
-    message = 'a'*240    
-    return message.encode('utf-8')
-
 # Основной цикл
-print("Start main loop (press BOOT to send)...")
+print("Start main loop...")
 print("-" * 50)
 
 seq_num = 0
@@ -93,27 +105,6 @@ def connect_wifi():
         print(f"[WIFI] Connecting to '{config_ga.WIFI_SSID}' '{config_ga.WIFI_PASS}'...")
         wlan.connect(config_ga.WIFI_SSID, config_ga.WIFI_PASS)
 
-        status_codes = {
-            4:    "STAT_DISCONNECTED - отключено",
-            5:    "STAT_CONNECT_FAIL - ошибка соединения",
-            200:  "STAT_BEACON_TIMEOUT - Потеря сигнала от точки доступа, таймаут маячка",
-            201:  "STAT_NO_AP_FOUND - точка не найдена",
-            202:  "STAT_WRONG_PASSWORD - неверный пароль!",
-            203:  "STAT_ASSOC_FAIL - Ошибка ассоциации с точкой доступа",
-            204:  "STAT_HANDSHAKE_TIMEOUT - таймаут рукопожатия",
-            1000: "STAT_IDLE - интерфейс свободен",
-            1001: "STAT_IDLE - нет соединения",
-            1002: "STAT_CONNECTING - подключаемся",
-            1010: "STAT_GOT_IP - получен IP!"
-        }
-        
-        # max_wait = 20
-        # while max_wait > 0:
-            # status = wlan.status()
-            # print(f"    {status}")
-                # break
-            # max_wait -= 1
-        #     time.sleep(1)
         while not wlan.isconnected():
             machine.idle()
             
@@ -147,6 +138,34 @@ def send_command(cmd, *params, device_id=None, timestamp=None) -> bool:
     return _enqueue_payload(payload)
 
 
+def send_join_ack(mac, request_rnd, node_id):
+    timestamp = get_iso_timestamp()
+    msg_rnd_id = random.randint(0, 999_999)
+    payload = f"0;{timestamp};{msg_rnd_id};join_ack;{mac},{request_rnd},{node_id}"
+    if _enqueue_payload(payload):
+        print(f"[JOIN] ACK queued: mac={mac} node_id={node_id}")
+        return True
+
+    print("[JOIN] ACK queue full")
+    return False
+
+
+def handle_join_request(device_id, timestamp, msg_rnd_id, msg):
+    if device_id != "0":
+        print(f"[JOIN] Ignoring join from non-zero device_id={device_id}")
+        return True
+
+    mac = msg.strip()
+    node_id = node_registry.assign_node_id(mac)
+    if not node_id:
+        print("[JOIN] Invalid MAC in join request")
+        return True
+
+    print(f"[JOIN] Request mac={mac} rnd={msg_rnd_id} -> node_id={node_id}")
+    send_join_ack(mac, msg_rnd_id, node_id)
+    return True
+
+
 # --- 3. Обработка входящих команд (MQTT -> Gateway -> LoRa) ---
 def on_message_received(topic, msg):
     """
@@ -172,7 +191,7 @@ def on_message_received(topic, msg):
                 device_id = cmd_parts[0] # from msg
                 timestamp = cmd_parts[1]
                 cmd_type = cmd_parts[2]
-                params = cmd_parts[3]
+                params = cmd_parts[3:]
                 
                 print(f"-"*30)
                 print(f"!!! COMMAND RECEIVED !!!")
@@ -244,8 +263,25 @@ def ensure_mqtt():
 
 
 def do_payload(payload):
-    global mqtt_client, history, seq_num, last_button_press_time, lora, led, button
-    device_id, timestamp, msg_rnd_id, msg_type, msg = payload.split(";")
+    global mqtt_client, history, seq_num, lora, led, button
+    parts = payload.split(";", 4)
+    if len(parts) != 5:
+        print("[LoRa] Invalid payload:", payload)
+        return
+
+    device_id, timestamp, msg_rnd_id, msg_type, msg = parts
+
+    if msg_type == "join":
+        handle_join_request(device_id, timestamp, msg_rnd_id, msg)
+        return
+
+    if msg_type == "join_ack":
+        print("[JOIN] Ignoring join_ack on gateway")
+        return
+
+    if device_id == "0":
+        print("[LoRa] Ignoring unassigned device payload:", payload)
+        return
     
     if (device_id, timestamp, msg_rnd_id) in history:
         print("History has this")
@@ -328,7 +364,7 @@ def do_payload(payload):
 
         
 def main():
-    global mqtt_client, history, seq_num, last_button_press_time, lora, led, button
+    global mqtt_client, history, seq_num, lora, led, button
 
     while True:
         try:
@@ -345,6 +381,7 @@ def main():
                     print(e)
                     # Если не получается - выводим как hex
                     print(f"[SIZX={len(received)}], hex: {received.hex()}")
+                    continue
                 
                 try:
                     do_payload(payload)
@@ -356,34 +393,6 @@ def main():
             if result == "sent":
                 print(f"sent: {msg}")
 
-            
-            # # Проверка кнопки с антидребезгом
-            # if button.value() == 0:  # кнопка нажата
-            #     current_time = time.ticks_ms()
-            #     if time.ticks_diff(current_time, last_button_press_time) > DEBOUNCE_MS:
-            #         last_button_press_time = current_time
-                    
-            #         # Мигаем светодиодом
-            #         led.value(0)  # включить
-                    
-            #         # Создаем и отправляем сообщение
-            #         device_id = config_ga.NODE_ID
-            #         timestamp = get_iso_timestamp()
-            #         msg_rnd_id = random.randint(0, 999_999)
-            #         msg_type = "cmd"
-            #         msg = "SLEEP"
-            #         payload = f"{device_id};{timestamp};{msg_rnd_id};{msg_type};{msg}"
-            #         print(f"\n[SENDING] {len(payload)} bytes...")
-                    
-            #         result = lora.send_bytes(payload)
-                    
-            #         if result == 0:
-            #             print("[SEND OK]")
-            #         else:
-            #             print(f"[SEND ERROR] code={result}")
-                    
-            #         led.value(1)  # выключить
-            
             time.sleep_ms(10)  # небольшая задержка
         
         except KeyboardInterrupt:
@@ -392,41 +401,6 @@ def main():
         except Exception as e:
             print(f"Error: {e}")
             time.sleep_ms(500)
-
-import network
-
-def scan_wifi():
-    wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    
-    print("Сканирование доступных сетей...")
-    networks = wlan.scan()
-    
-    print("\nНайденные сети:")
-    print("-" * 50)
-    
-    found = False
-    for net in networks:
-        ssid = net[0].decode('utf-8')  # Имя сети
-        bssid = ':'.join('%02x' % b for b in net[1])  # MAC адрес
-        channel = net[2]  # Канал
-        rssi = net[3]  # Сила сигнала
-        authmode = net[4]  # Тип шифрования
-        
-        print(f"SSID: {ssid}")
-        print(f"  Канал: {channel}, Сигнал: {rssi} dBm")
-        print(f"  BSSID: {bssid}")
-        print(f"  Шифрование: {authmode}")
-        print()
-        
-        if ssid == config_ga.WIFI_SSID:
-            print(">>> ВАША СЕТЬ НАЙДЕНА! <<<")
-            found = True
-    
-    if not found:
-        print(f"Сеть '{config_ga.WIFI_SSID}' НЕ найдена!")
-    
-    return found
 
 if __name__ == "__main__":
     led.value(0)

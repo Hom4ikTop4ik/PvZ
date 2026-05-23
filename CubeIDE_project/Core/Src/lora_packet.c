@@ -1,4 +1,5 @@
 #include "lora_packet.h"
+#include "lora_identity.h"
 #include "main.h"
 #include <stdio.h>
 #include <string.h>
@@ -61,7 +62,7 @@ uint16_t lora_packet_build_humidity(uint8_t *buffer, uint16_t max_len, float hum
     uint32_t rnd = lora_packet_random_id();
     
     int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%.2f",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_HUM, humidity);
+                          lora_identity_get_node_id(), timestamp, (unsigned long)rnd, LORA_MSG_HUM, humidity);
     
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
@@ -76,7 +77,7 @@ uint16_t lora_packet_build_temperature(uint8_t *buffer, uint16_t max_len, float 
     uint32_t rnd = lora_packet_random_id();
     
     int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%.2f",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_TMP, temperature);
+                          lora_identity_get_node_id(), timestamp, (unsigned long)rnd, LORA_MSG_TMP, temperature);
     
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
@@ -91,7 +92,7 @@ uint16_t lora_packet_build_geo(uint8_t *buffer, uint16_t max_len, float lat, flo
     uint32_t rnd = lora_packet_random_id();
     
     int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%.6f,%.6f",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_GEO, lat, lon);
+                          lora_identity_get_node_id(), timestamp, (unsigned long)rnd, LORA_MSG_GEO, lat, lon);
     
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
@@ -107,7 +108,7 @@ uint16_t lora_packet_build_state(uint8_t *buffer, uint16_t max_len,
     uint32_t rnd = lora_packet_random_id();
     
     int written = snprintf((char *)buffer, max_len, "%s;%s;%lu;%s;%d,%.2f,%.1f,%d",
-                          LORA_NODE_ID, timestamp, (unsigned long)rnd, LORA_MSG_STT,
+                          lora_identity_get_node_id(), timestamp, (unsigned long)rnd, LORA_MSG_STT,
                           (int)rssi, snr, battery, online ? 1 : 0);
     
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;

@@ -66,6 +66,8 @@ else()
         Core/Src/lora_command.c
         Core/Src/lora_driver.c
         Core/Src/lora_history.c
+        Core/Src/lora_identity.c
+        Core/Src/lora_join.c
         Core/Src/lora_packet.c
         Core/Src/lora_queue.c
     )

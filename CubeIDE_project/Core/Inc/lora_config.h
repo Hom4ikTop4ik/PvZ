@@ -19,8 +19,13 @@
 #define LORA_HISTORY_SIZE       128     /* количество ключей для дедупликации */
 
 /* Node ID (строка) - идентификатор этого узла в сети */
+#define LORA_UNASSIGNED_NODE_ID "0"
+#define LORA_NODE_ID_MAX_LEN    16
+#define LORA_NODE_MAC_MAX_LEN   32
+#define LORA_JOIN_INTERVAL_MS   5000
+
 #ifndef LORA_NODE_ID
-#define LORA_NODE_ID            "NODE_001"
+#define LORA_NODE_ID            LORA_UNASSIGNED_NODE_ID
 #endif
 
 /* Таймауты UART и LoRa операций */

@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include "lora_config.h"
 
+#define LORA_MSG_JOIN   "join"
+#define LORA_MSG_JOIN_ACK "join_ack"
+
 /* ============================================================================
  * LoRa Packet Builder
  * ============================================================================
