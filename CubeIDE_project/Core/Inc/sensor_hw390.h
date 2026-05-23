@@ -9,15 +9,15 @@
 #define HW390_RAW_WET_DEFAULT  1500  /* ADC значение для влажной почвы (ниже ADC = влажнее) */
 
 /* Интервалы для калибровки */
-#define HW390_CALIBRATION_BOOT_WINDOW_MS 5000
-#define HW390_CALIBRATION_DURATION_MS 10000
-#define HW390_CALIBRATION_POLL_INTERVAL_MS 50
+#define HW390_CALIBRATION_BOOT_WINDOW_MS 5000 /* 5 секунд, xтоб нажать на кнопку USER */
+#define HW390_CALIBRATION_DURATION_MS 30000 /* 30 секунд на замер */
+#define HW390_CALIBRATION_POLL_INTERVAL_MS 50 /* замер каждые 50 мс */
 
 /* Error values */
 #define HW390_ERROR_VALUE -500.0f
 
 /* State machine timeouts */
-#define HW390_POWER_ON_DELAY_MS 50
+#define HW390_POWER_ON_DELAY_MS 500
 #define HW390_MEASURING_TIMEOUT_MS 2000
 
 /* State machine states */
@@ -41,6 +41,11 @@ extern uint16_t hw390_raw_wet;
 
 /* API датчика */
 int hw390_init(void);
+void hw390_power_on(void);
+void hw390_power_off(void);
+
+/* Нормализация значений: raw -> percent */
+float hw390_normalize(uint16_t raw);
 
 /* Request measurement - non-blocking */
 int hw390_request_measurement(void);

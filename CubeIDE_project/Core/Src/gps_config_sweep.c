@@ -1,7 +1,8 @@
-#include "gps_config_sweep.h"
-
 #include <stdbool.h>
 #include <stdio.h>
+
+#include "gps_config_sweep.h"
+#include "printf.h"
 
 #define UBX_ACK_TIMEOUT_MS 1500U
 #define UBX_PAYLOAD_MAX 96U
@@ -351,15 +352,15 @@ static int ubx_wait_ack(UART_HandleTypeDef *uart, uint8_t ack_class, uint8_t ack
 static void save_and_reset_if_enabled(UART_HandleTypeDef *uart)
 {
 #if GPS_CONFIG_SAVE_ACCEPTED
-    printf("Saving accepted GNSS config\r\n");
+    PRINTF("Saving accepted GNSS config\r\n");
     ubx_send(uart, 0x06U, 0x09U, cfg_save_payload, sizeof(cfg_save_payload));
     HAL_Delay(1000U);
 #endif
 
 #if GPS_CONFIG_COLD_START_ACCEPTED
-    printf("Cold-starting GPS module after accepted config\r\n");
+    PRINTF("Cold-starting GPS module after accepted config\r\n");
     ubx_send(uart, 0x06U, 0x04U, cfg_cold_start_payload, sizeof(cfg_cold_start_payload));
-    printf("Waiting after cold start (%lu ms)\r\n", (unsigned long)GPS_AFTER_RESET_WAIT_MS);
+    PRINTF("Waiting after cold start (%lu ms)\r\n", (unsigned long)GPS_AFTER_RESET_WAIT_MS);
     HAL_Delay(GPS_AFTER_RESET_WAIT_MS);
 #endif
 }
@@ -372,25 +373,25 @@ static bool try_variant(UART_HandleTypeDef *uart, const gnss_config_variant_t *v
 
     payload_len = build_cfg_gnss_payload(variant, payload, sizeof(payload));
     if (payload_len == 0U) {
-        printf("GPS config variant skipped: %s payload build failed\r\n", variant->name);
+        PRINTF("GPS config variant skipped: %s payload build failed\r\n", variant->name);
         return false;
     }
 
-    printf("Trying GPS config: %s\r\n", variant->name);
+    PRINTF("Trying GPS config: %s\r\n", variant->name);
     gps_config_flush_rx(uart);
     ubx_send(uart, 0x06U, 0x3EU, payload, payload_len);
     ack = ubx_wait_ack(uart, 0x06U, 0x3EU);
 
     if (ack > 0) {
-        printf("GPS config accepted: %s\r\n", variant->name);
+        PRINTF("GPS config accepted: %s\r\n", variant->name);
         save_and_reset_if_enabled(uart);
         return true;
     }
 
     if (ack < 0) {
-        printf("GPS config rejected: %s\r\n", variant->name);
+        PRINTF("GPS config rejected: %s\r\n", variant->name);
     } else {
-        printf("GPS config timeout: %s\r\n", variant->name);
+        PRINTF("GPS config timeout: %s\r\n", variant->name);
     }
 
     HAL_Delay(300U);
@@ -402,25 +403,25 @@ static void run_legacy_python_fallback(UART_HandleTypeDef *uart)
     uint8_t payload[UBX_PAYLOAD_MAX] = {0U};
     uint16_t payload_len;
 
-    printf("No ACK-checked config worked; running legacy Python fallback\r\n");
+    PRINTF("No ACK-checked config worked; running legacy Python fallback\r\n");
     payload_len = build_cfg_gnss_payload(&variants[0], payload, sizeof(payload));
     if (payload_len == 0U) {
-        printf("Legacy fallback payload build failed\r\n");
+        PRINTF("Legacy fallback payload build failed\r\n");
         return;
     }
 
     gps_config_flush_rx(uart);
-    printf("Applying legacy GNSS config: GPS/SBAS/QZSS off, GLONASS on\r\n");
+    PRINTF("Applying legacy GNSS config: GPS/SBAS/QZSS off, GLONASS on\r\n");
     ubx_send(uart, 0x06U, 0x3EU, payload, payload_len);
     HAL_Delay(1000U);
 
-    printf("Saving GNSS config\r\n");
+    PRINTF("Saving GNSS config\r\n");
     ubx_send(uart, 0x06U, 0x09U, cfg_save_payload, sizeof(cfg_save_payload));
     HAL_Delay(1000U);
 
-    printf("Cold-starting GPS module\r\n");
+    PRINTF("Cold-starting GPS module\r\n");
     ubx_send(uart, 0x06U, 0x04U, cfg_cold_start_payload, sizeof(cfg_cold_start_payload));
-    printf("Waiting after cold start (%lu ms)\r\n", (unsigned long)GPS_AFTER_RESET_WAIT_MS);
+    PRINTF("Waiting after cold start (%lu ms)\r\n", (unsigned long)GPS_AFTER_RESET_WAIT_MS);
     HAL_Delay(GPS_AFTER_RESET_WAIT_MS);
 }
 
@@ -430,11 +431,11 @@ void gps_config_sweep_run(UART_HandleTypeDef *gps_uart)
         return;
     }
 
-    printf("GPS config auto-sweep: trying CFG-GNSS variants until first ACK\r\n");
+    PRINTF("GPS config auto-sweep: trying CFG-GNSS variants until first ACK\r\n");
 
     for (uint32_t i = 0U; i < (sizeof(variants) / sizeof(variants[0])); ++i) {
         if (try_variant(gps_uart, &variants[i])) {
-            printf("GPS config auto-sweep stopped after accepted variant\r\n");
+            PRINTF("GPS config auto-sweep stopped after accepted variant\r\n");
             return;
         }
     }
@@ -442,6 +443,6 @@ void gps_config_sweep_run(UART_HandleTypeDef *gps_uart)
 #if GPS_CONFIG_LEGACY_FALLBACK_IF_ALL_FAIL
     run_legacy_python_fallback(gps_uart);
 #else
-    printf("GPS config auto-sweep finished: no accepted variant\r\n");
+    PRINTF("GPS config auto-sweep finished: no accepted variant\r\n");
 #endif
 }

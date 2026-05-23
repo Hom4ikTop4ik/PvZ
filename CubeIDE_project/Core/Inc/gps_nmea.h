@@ -63,6 +63,9 @@ extern UART_HandleTypeDef huart1;
 /* Current GPS fix (global for tick function access) */
 extern gps_fix_t gps_current_fix;
 
+void gps_power_on(void);
+void gps_power_off(void);
+
 /* Request measurement - non-blocking */
 int gps_request_measurement(void);
 

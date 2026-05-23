@@ -1,10 +1,12 @@
+#include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
+
 #include "sensor_hw390.h"
 #include "hw390_flash.h"
 #include "adc.h"
 #include "main.h"
-#include <string.h>
-#include <stdio.h>
-#include <stdbool.h>
+#include "printf.h"
 
 /* Переменные калибровки в runtime */
 uint16_t hw390_raw_dry = HW390_RAW_DRY_DEFAULT;
@@ -22,12 +24,12 @@ static sensor_history_t history = {0};
 extern ADC_HandleTypeDef hadc1;
 
 /* Power gating (N-channel MOSFET, active HIGH): SET(3.3v) = power on, RESET(0.0v) = power off */
-static void hw390_power_on(void)
+void hw390_power_on(void)
 {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
 }
 
-static void hw390_power_off(void)
+void hw390_power_off(void)
 {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 }
@@ -43,7 +45,7 @@ int hw390_init(void)
         hw390_set_calibration(HW390_RAW_DRY_DEFAULT, HW390_RAW_WET_DEFAULT);
     }
 
-    printf("[HW390] Values: min-wet=%d  max-dry=%d\r\n", hw390_raw_wet, hw390_raw_dry);
+    PRINTF("[HW390] Values: min-wet=%d  max-dry=%d\r\n", hw390_raw_wet, hw390_raw_dry);
 
     hw390_state = HW390_STATE_IDLE;
     hw390_result.valid = 0;
@@ -61,7 +63,7 @@ static int hw390_start(void)
     return SENSOR_OK;
 }
 
-static float hw390_normalize(uint16_t raw) {
+float hw390_normalize(uint16_t raw) {
     int32_t dry = hw390_raw_dry;
     int32_t wet = hw390_raw_wet;
 
@@ -170,7 +172,7 @@ void hw390_tick(void)
             hw390_state = HW390_STATE_IDLE;
             break;
     }
-    printf("hw390_result_ready - %d\r\n", hw390_result_ready);
+    PRINTF("hw390_result_ready - %d\r\n", hw390_result_ready);
 }
 
 /* Получение истории */
@@ -189,7 +191,7 @@ void hw390_clear_history(void)
 
 
 void hw390_run_calibration(void) {
-    printf("[HW390] Start calibration\r\n");
+    PRINTF("[HW390] Start calibration\r\n");
     // Включить питание сенсора
     hw390_power_on();
     HAL_Delay(HW390_POWER_ON_DELAY_MS); // Дать сенсору прогреться
@@ -209,7 +211,7 @@ void hw390_run_calibration(void) {
                 if (raw < min_raw) min_raw = raw;
                 if (raw > max_raw) max_raw = raw;
 
-                printf("[Калибровка] HW390: raw=%u, min=%u, max=%u\r\n", raw, min_raw, max_raw);
+                PRINTF("[Калибровка] HW390: raw=%u, min=%u, max=%u\r\n", raw, min_raw, max_raw);
             }
             HAL_ADC_Stop(&hadc1);
         }
@@ -219,18 +221,18 @@ void hw390_run_calibration(void) {
 
     hw390_power_off();
 
-    printf("[HW390] Calibrationd done: min(wet)=%u, max(dry)=%u\r\n", min_raw, max_raw);
+    PRINTF("[HW390] Calibrationd done: min(wet)=%u, max(dry)=%u\r\n", min_raw, max_raw);
 
 
     // Сохранить во FLASH
     if (hw390_flash_save_calibration(max_raw, min_raw) == 0) {
-        printf("[HW390] Calibration wrote into FLASH!\r\n");
+        PRINTF("[HW390] Calibration wrote into FLASH!\r\n");
     } else {
-        printf("[HW390] FLASH Error: error while writing calibration into FLASH!\r\n");
+        PRINTF("[HW390] FLASH Error: error while writing calibration into FLASH!\r\n");
     }
 
     HAL_Delay(500);
-    printf("Reboot...\r\n");
+    PRINTF("Reboot...\r\n");
     HAL_NVIC_SystemReset();
 }
 

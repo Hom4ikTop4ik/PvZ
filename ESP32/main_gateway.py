@@ -292,7 +292,7 @@ def do_payload(payload):
             mqtt_client.publish(topic_temp, payload_temp)
             seq_num += 1
             print(f"[TX] {topic_temp} -> {payload_temp}")
-        elif msg_type == "geo":
+        elif msg_type == "gps":
             # --- 3. Геопозиция (Location) ---
             # Топик: dev/test/sensors/node-01/location
             topic_loc = f"{config_ga.TOPIC_PUB_PREFIX}/{device_id}/location"

@@ -34,7 +34,7 @@ IoT-система сбора телеметрии с датчиков → LoRa 
 device_id;timestamp;msg_rnd_id;msg_type;payload
 ```
 
-**msg_type:** `hum`, `tmp`, `geo`, `stt`, `cmd`
+**msg_type:** `hum`, `tmp`, `gps`, `stt`, `cmd`
 
 Примеры payload (через `;`):
 - humidity: `device_id,timestamp,humidity,seq`
@@ -45,7 +45,7 @@ device_id;timestamp;msg_rnd_id;msg_type;payload
 
 ## Логика работы (перенос с main_sensor_wroom_2.py)
 - Флаги потоков: `need_humidity_info`, `need_temperature_info`, `need_gps_info`, `need_status_info`
-- Force-флаги: `force_humidity_measure`, `force_temperature_measure`, `force_geo_measure`, `force_status_measure`
+- Force-флаги: `force_humidity_measure`, `force_temperature_measure`, `force_gps_measure`, `force_status_measure`
 - Таймеры последнего измерения: `_last_hw_ms`, `_last_ds_ms`, `_last_gps_ms`, `_last_status_ms`
 - Отправка через очередь (`LoRaTxQueue`), pump с минимальным интервалом
 - История сообщений (`RingBuffer`) для предотвращения broadcast-шторма

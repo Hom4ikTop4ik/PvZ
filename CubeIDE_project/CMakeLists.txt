@@ -59,6 +59,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/gps_config_sweep.c
     Core/Src/gps_nmea.c
     Core/Src/hw390_flash.c
+    Core/Src/gps_time.c
+    Core/Src/utils.c
+    Core/Src/interval.c
+    Core/Src/interval_flash.c
 )
 
 # Add include paths

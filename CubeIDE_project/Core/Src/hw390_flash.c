@@ -1,8 +1,7 @@
 #include "hw390_flash.h"
-#include "stm32l4xx_hal.h"    // или ваш HAL
+#include "stm32l4xx_hal.h"
 
-// TODO
-// ПРОВЕРИТЬ АДРЕС
+// АДРЕС подходит для STM32L431CCT6 Black Pill
 #define HW390_FLASH_ADDR  ((uint32_t)0x0803F800) // Пример! Подберите под свою MCU (обычно последние 2кб)
 
 #define HW390_MAGIC 0x39393048 // 'H090' — маркер для вашей структуры

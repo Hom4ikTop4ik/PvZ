@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <string.h>
+
 #include "lora_app.h"
 #include "lora_command.h"
 #include "lora_config.h"
@@ -5,8 +8,8 @@
 #include "lora_identity.h"
 #include "lora_join.h"
 #include "lora_packet.h"
-#include <stdio.h>
-#include <string.h>
+
+#include "printf.h"
 
 /* ============================================================================
  * Global Instances
@@ -36,11 +39,11 @@ bool lora_app_init(void)
     
     /* Инициализация UART драйвера */
     if (lora_driver_init() != LORA_OK) {
-        printf("[LoRa] Driver init failed\r\n");
+        PRINTF("[LoRa] Driver init failed\r\n");
         return false;
     }
     
-    printf("[LoRa] Initialized OK\r\n");
+    PRINTF("[LoRa] Initialized OK\r\n");
     return true;
 }
 
@@ -92,11 +95,11 @@ lora_pump_result_t lora_app_tx_pump(void)
     if (result == LORA_OK) {
         /* Отметка о отправке для pacing */
         lora_queue_mark_sent(&lora_tx_queue);
-        printf("[LoRa] TX: %s\r\n", msg);
+        PRINTF("[LoRa] TX: %s\r\n", msg);
         return LORA_PUMP_SENT;
     }
     else {
-        printf("[LoRa] TX error: %d\r\n", result);
+        PRINTF("[LoRa] TX error: %d\r\n", result);
         return LORA_PUMP_ERROR;
     }
 }
@@ -131,7 +134,7 @@ static void parse_msg_type_and_clear_force(const char *msg)
         lora_packet_clear_force_temperature();
     }
     else if (strncmp(p, LORA_MSG_GEO, 3) == 0) {
-        lora_packet_clear_force_geo();
+        lora_packet_clear_force_gps();
     }
     else if (strncmp(p, LORA_MSG_STT, 3) == 0) {
         lora_packet_clear_force_state();
@@ -159,13 +162,13 @@ void lora_app_rx_process(void)
     
     buffer[len] = '\0';
 
-    printf("[LoRa] RX: received message: %s\r\n", (char*)buffer);
+    PRINTF("[LoRa] RX: received message: %s\r\n", (char*)buffer);
 
     /* Шаг 1: Парсинг ключа и проверка на дубликат (ТОЛЬКО ключ!) */
     lora_history_key_t key;
     if (!lora_history_parse_key((char *)buffer, &key)) {
         /* Не удалось распарсить ключ - неверный формат */
-        printf("[LoRa] RX: invalid format - %s\r\n", (char*)buffer);
+        PRINTF("[LoRa] RX: invalid format - %s\r\n", (char*)buffer);
         return;
     }
     
@@ -177,15 +180,6 @@ void lora_app_rx_process(void)
     
     /* Шаг 3: Новый пакет - добавляем в историю */
     lora_history_add(&lora_rx_history, &key);
-
-    lora_join_result_t join_result = lora_join_process_payload((char *)buffer);
-    if (join_result == LORA_JOIN_CONSUMED) {
-        return;
-    }
-    if (join_result == LORA_JOIN_RETRANSMIT) {
-        lora_app_retransmit(buffer, len);
-        return;
-    }
 
     /* Шаг 4: Обработка команды или ретрансляция */
     lora_command_process_payload((char *)buffer, lora_identity_get_node_id());
@@ -232,19 +226,19 @@ bool lora_app_send_temperature(float temp)
     return lora_queue_add(&lora_tx_queue, buffer, len);
 }
 
-bool lora_app_send_geo(float lat, float lon)
+bool lora_app_send_gps(float lat, float lon)
 {
     if (!lora_identity_is_assigned()) {
         return false;
     }
 
-    if (!lora_packet_should_send_geo()) {
+    if (!lora_packet_should_send_gps()) {
         return false;
     }
     
     uint8_t buffer[LORA_MAX_PAYLOAD_LEN];
     memset(buffer, 0, sizeof(buffer));
-    uint16_t len = lora_packet_build_geo(buffer, sizeof(buffer), lat, lon);
+    uint16_t len = lora_packet_build_gps(buffer, sizeof(buffer), lat, lon);
     
     if (len == 0) return false;
     

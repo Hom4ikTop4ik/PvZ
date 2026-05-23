@@ -1,9 +1,11 @@
-#include "lora_identity.h"
-#include "lora_config.h"
-#include "stm32l4xx_hal.h"
-
 #include <stdio.h>
 #include <string.h>
+
+#include "stm32l4xx_hal.h"
+#include "lora_identity.h"
+#include "lora_config.h"
+
+#include "printf.h"
 
 static char current_node_id[LORA_NODE_ID_MAX_LEN] = { 0 };
 static char node_mac[LORA_NODE_MAC_MAX_LEN] = { 0 };
@@ -52,6 +54,6 @@ bool lora_identity_set_node_id(const char *node_id)
 
     snprintf(current_node_id, sizeof(current_node_id), "%s", node_id);
     node_id_assigned = true;
-    printf("[JOIN] DONE -  Node_ID assigned: %s (MAC %s)\r\n", current_node_id, node_mac);
+    PRINTF("[JOIN] DONE -  Node_ID assigned: %s (MAC %s)\r\n", current_node_id, node_mac);
     return true;
 }

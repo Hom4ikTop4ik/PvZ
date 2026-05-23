@@ -27,11 +27,18 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "printf.h"
+
 #include "hw390_flash.h"
+
+#include "interval.h"
+
+#include "gps_time.h"
 
 #include "gps_nmea.h"
 #include "lora_app.h"
@@ -39,6 +46,7 @@
 #include "lora_driver.h"
 #include "lora_identity.h"
 #include "lora_join.h"
+#include "utils.h"
 
 #include "sensor_common.h"
 #include "sensor_hw390.h"
@@ -57,13 +65,7 @@
 
 /* Node configuration */
 #define GPIO_USER_BTN_LETTER GPIOC
-#define GPIO_USER_BTN_PIN GPIO_PIN_13
-
-/* Measurement periods (seconds) */
-#define HUMIDITY_PERIOD_S 10
-#define TEMPERATURE_PERIOD_S 10
-#define GPS_PERIOD_S 15
-#define STATUS_PERIOD_S 60
+#define GPIO_USER_BTN_PIN    GPIO_PIN_13
 
 /* USER CODE END PD */
 
@@ -84,16 +86,24 @@ uint32_t last_gps_ms = 0;
 uint32_t last_status_ms = 0;
 
 /* Force measurement flags */
-bool force_humidity = false;
-bool force_temperature = false;
-bool force_gps = false;
-bool force_status = false;
+extern volatile bool force_humidity;
+extern volatile bool force_temperature;
+extern volatile bool force_gps;
+extern volatile bool force_status;
 
 /* Enable/disable flags */
 bool need_humidity = true;
 bool need_temperature = true;
 bool need_gps = true;
 bool need_status = true;
+
+/* Interval global variables */
+extern uint32_t hum_period_s;
+extern uint32_t tmp_period_s;
+extern uint32_t gps_period_s;
+extern uint32_t stt_period_s;
+
+extern volatile bool system_sleep_mode;
 
 /* Online status */
 bool device_online = true;
@@ -113,6 +123,8 @@ extern volatile bool hw390_result_ready;
 extern volatile bool ds18b20_result_ready;
 extern bool gps_result_ready;
 extern bool ina219_result_ready;
+
+extern RTC_HandleTypeDef hrtc;
 
 /* USER CODE END PV */
 
@@ -186,26 +198,31 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 
-  printf("Wait 2 secs...\r\n");
+  HAL_Delay(200);
+  PRINTF("Wait 2 secs...\r\n");
   HAL_Delay(2000);
-  printf("Sensor Node firmware starting...\r\n");
-  printf("You can start HW390 calibration - Press USER button!\r\n");
+  PRINTF("Sensor Node firmware starting...\r\n");
+  PRINTF("You can start HW390 calibration - Press USER button! (%d ms)\r\n", HW390_CALIBRATION_BOOT_WINDOW_MS);
 
   // Калибровки HW390
   uint32_t boot_window_start = HAL_GetTick();
   bool do_calibrate = false;
   while (HAL_GetTick() - boot_window_start < HW390_CALIBRATION_BOOT_WINDOW_MS) {
-      if (HAL_GPIO_ReadPin(GPIO_USER_BTN_LETTER, GPIO_USER_BTN_PIN) == GPIO_PIN_RESET) { // active LOW
+      if (HAL_GPIO_ReadPin(GPIO_USER_BTN_LETTER, GPIO_USER_BTN_PIN) == GPIO_PIN_RESET) { // active LOW, т.е. 0=нажато, 1=отпущено
           do_calibrate = true;
           break;
       }
       HAL_Delay(10);
   }
+
   if (do_calibrate) {
-      printf("GOYDA\r\n");
       hw390_run_calibration();
       NVIC_SystemReset(); // программный reset
   }
+  else {
+      PRINTF("Without HW390 calibration\r\n");
+  }
+
 
 
 
@@ -222,7 +239,43 @@ int main(void)
   /* Initialize GPS (but keep it powered off initially) */
   gps_test_init(&huart1);  /* Initialize UART and DMA */
 
-  printf("Sensor Node initialized\r\n");
+  /* Initialize random number generator */
+  srand(HAL_GetTick());
+
+  PRINTF("Sensor Node initialized\r\n");
+  PRINTF("[HW390] Dry-Wet values: min(wet)=%u, max(dry)=%u\r\n", hw390_raw_wet, hw390_raw_dry);
+  hw390_power_on();
+  HAL_Delay(500); // на стабилизацию
+  HAL_ADC_Start(&hadc1);
+  HAL_Delay(500); // на стабилизацию
+  if (HAL_ADC_PollForConversion(&hadc1, 10000) == HAL_OK) {
+      uint32_t raw = HAL_ADC_GetValue(&hadc1);
+      HAL_ADC_Stop(&hadc1);
+      float humidity = hw390_normalize(raw);
+      PRINTF("[HW390] Check humidity: [RAW %ld] %.2f%%\r\n", raw, humidity);
+  }
+  else {
+      PRINTF("[HW390] Check hum timeout\r\n");
+  }
+
+  // Инициализировать интервалы замеров (default or from FLASH)
+  interval_init();
+
+  // Time synchronizing
+  gps_time_init();
+  PRINTF("Waiting for GPS to set RTC...\r\n");
+  if (gps_time_sync_blocking(&hrtc)) {
+      PRINTF("RTC time synchronized by GPS!\r\n");
+
+      char buf[32];
+      rtc_iso8601_string(buf, sizeof(buf), &hrtc);
+      PRINTF("Current time: %s\n", buf);
+  }
+  else {
+      PRINTF("RTC time not synchronized (timeout).\r\n");
+  }
+
+
 
   /* USER CODE END 2 */
 
@@ -235,12 +288,12 @@ int main(void)
     /* USER CODE BEGIN 3 */
     /* Call sensor tick functions - FSM (finite state machine) */
     lora_join_tick();
-    hw390_tick();
-    ds18b20_tick();
-    gps_tick();
     // ina219_tick();
-
-    printf("ready: HW-%d DS-%d GPS-%d\r\n", hw390_result_ready, ds18b20_result_ready, gps_result_ready);
+    if (!system_sleep_mode) {
+        hw390_tick();
+        ds18b20_tick();
+        gps_tick();
+    }
 
     /* LoRa TX pump and RX process (call every iteration) */
     lora_app_tx_pump();
@@ -251,13 +304,13 @@ int main(void)
     debug_uart_process();
 #endif
 
-    /* Check button for force measurements (active low) */
+    /* Check USER button for force measurements (active low) */
     if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET)
     {
       uint32_t now = HAL_GetTick();
       if (now - button_last_press_ms >= BUTTON_DEBOUNCE_MS) {
         button_last_press_ms = now;
-        printf("Button pressed - forcing all measurements\r\n");
+        PRINTF("Button pressed - forcing all measurements\r\n");
         force_humidity = true;
         force_temperature = true;
         force_gps = true;
@@ -266,116 +319,123 @@ int main(void)
     }
 
     const char *node_id = lora_identity_get_node_id(); // точно не NULL, ведь функция просто делает return указателя
-    if (strcmp(node_id, LORA_UNASSIGNED_NODE_ID) == 0) {
-        printf("Node_ID is default\r\n");
+    if (system_sleep_mode && !(force_humidity || force_temperature || force_gps || force_status)) {
+    	PRINTF("\r\n[SLEEP] sleeping now...\r\n\r\n");
     }
     else {
-        // can start sensors state machines
+        PRINTF("ready FSM: HW-%d DS-%d GPS-%d\r\n", hw390_result_ready, ds18b20_result_ready, gps_result_ready);
 
-        /* HW390 humidity check result */
-        if (hw390_result_ready) {
-          sensor_reading_t reading;
-          if (hw390_get_result(&reading) == 0 && reading.valid) {
-            printf("Humidity: %.2f%%\r\n", reading.value);
-            lora_app_send_humidity(reading.value);
-            last_humidity_ms = HAL_GetTick();
-            force_humidity = false;
-          } else {
-            printf("Humidity    measurement failed\r\n");
-            lora_app_send_humidity(HW390_ERROR_VALUE);
-            last_humidity_ms = HAL_GetTick();
-            force_humidity = false;
-          }
+        if (strcmp(node_id, LORA_UNASSIGNED_NODE_ID) == 0) {
+            PRINTF("Node_ID is default\r\n");
         }
+        else {
+            // can start sensors state machines
 
-        /* HW390 Humidity measurement */
-        if (check_need_humidity())
-        {
-          printf("Humidity measurement needed\r\n");
+            /* HW390 humidity check result */
+            if (hw390_result_ready) {
+              sensor_reading_t reading;
+              if (hw390_get_result(&reading) == 0 && reading.valid) {
+                PRINTF("Humidity: %.2f%%\r\n", reading.value);
+                lora_app_send_humidity(reading.value);
+                last_humidity_ms = HAL_GetTick();
+                force_humidity = false;
+              } else {
+                PRINTF("Humidity    measurement failed\r\n");
+                lora_app_send_humidity(HW390_ERROR_VALUE);
+                last_humidity_ms = HAL_GetTick();
+                force_humidity = false;
+              }
+            }
 
-          if (!hw390_busy) {
-            hw390_request_measurement();
-          }
+            /* HW390 Humidity measurement */
+            if (check_need_humidity())
+            {
+              PRINTF("Humidity measurement needed\r\n");
+
+              if (!hw390_busy) {
+                hw390_request_measurement();
+              }
+            }
+
+            /* DS18B20 Temperature check result */
+            if (ds18b20_result_ready) {
+              sensor_reading_t reading;
+              if (ds18b20_get_result(&reading) == 0 && reading.valid) {
+                PRINTF("Temperature: %.2f*C\r\n", reading.value);
+                lora_app_send_temperature(reading.value);
+                last_temperature_ms = HAL_GetTick();
+                force_temperature = false;
+              } else {
+                PRINTF("Temperature    measurement failed\r\n");
+                lora_app_send_temperature(DS18B20_ERROR_VALUE);
+                last_temperature_ms = HAL_GetTick();
+                force_temperature = false;
+              }
+            }
+
+            /* Temperature measurement */
+            if (check_need_temperature())
+            {
+              PRINTF("Temperature measurement needed\r\n");
+
+              if (!ds18b20_busy) {
+                ds18b20_request_measurement();
+              }
+            }
+
+            /* GPS check result */
+            if (gps_result_ready) {
+              float lat, lon;
+              if (gps_get_result(&lat, &lon) == 0) {
+                lora_app_send_gps(lat, lon);
+                PRINTF("GPS %.6f %.6f\r\n", lat, lon);
+                last_gps_ms = HAL_GetTick();
+                force_gps = false;
+              } else {
+                PRINTF("GPS    collection failed\r\n");
+                lora_app_send_gps(GPS_ERROR_LAT, GPS_ERROR_LON);
+                last_gps_ms = HAL_GetTick();
+                force_gps = false;
+              }
+            }
+
+            /* GPS measurement */
+            if (check_need_gps()) {
+              PRINTF("GPS measurement needed\r\n");
+
+              if (!gps_busy) {
+                gps_request_measurement();
+              }
+            }
+
+            /* State measurement */
+            if (check_need_status())
+            {
+              PRINTF("State measurement needed\r\n");
+
+              int16_t rssi;
+              float snr;
+              float battery;
+              if (measure_state(&rssi, &snr, &battery) == 0)
+              {
+                lora_app_send_state(rssi, snr, battery, device_online);
+              }
+              else
+              {
+                PRINTF("State    measurement failed\r\n");
+                lora_app_send_state(STATE_ERROR_RSSI, STATE_ERROR_SNR, STATE_ERROR_BATTERY, device_online);
+              }
+
+              last_status_ms = HAL_GetTick();
+              force_status = false;
+            }
         }
-
-        /* DS18B20 Temperature check result */
-        if (ds18b20_result_ready) {
-          sensor_reading_t reading;
-          if (ds18b20_get_result(&reading) == 0 && reading.valid) {
-            printf("Temperature: %.2f*C\r\n", reading.value);
-            lora_app_send_temperature(reading.value);
-            last_temperature_ms = HAL_GetTick();
-            force_temperature = false;
-          } else {
-            printf("Temperature    measurement failed\r\n");
-            lora_app_send_temperature(DS18B20_ERROR_VALUE);
-            last_temperature_ms = HAL_GetTick();
-            force_temperature = false;
-          }
-        }
-
-        /* Temperature measurement */
-        if (check_need_temperature())
-        {
-          printf("Temperature measurement needed\r\n");
-
-          if (!ds18b20_busy) {
-            ds18b20_request_measurement();
-          }
-        }
-
-        /* GPS check result */
-        if (gps_result_ready) {
-          float lat, lon;
-          if (gps_get_result(&lat, &lon) == 0) {
-            lora_app_send_geo(lat, lon);
-            printf("GPS %.6f %.6f\r\n", lat, lon);
-            last_gps_ms = HAL_GetTick();
-            force_gps = false;
-          } else {
-            printf("GPS    collection failed\r\n");
-            lora_app_send_geo(GPS_ERROR_LAT, GPS_ERROR_LON);
-            last_gps_ms = HAL_GetTick();
-            force_gps = false;
-          }
-        }
-
-        /* GPS measurement */
-        if (check_need_gps()) {
-          printf("GPS measurement needed\r\n");
-
-          if (!gps_busy) {
-            gps_request_measurement();
-          }
-        }
-
-        /* State measurement */
-        if (check_need_status())
-        {
-          printf("State measurement needed\r\n");
-
-          int16_t rssi;
-          float snr;
-          float battery;
-          if (measure_state(&rssi, &snr, &battery) == 0)
-          {
-            lora_app_send_state(rssi, snr, battery, device_online);
-          }
-          else
-          {
-            printf("State    measurement failed\r\n");
-            lora_app_send_state(STATE_ERROR_RSSI, STATE_ERROR_SNR, STATE_ERROR_BATTERY, device_online);
-          }
-
-          last_status_ms = HAL_GetTick();
-          force_status = false;
-        }
-    }
+    } // end `if (!system_sleep_mode)`
 
     /* Log state machine states for debugging */
     static uint32_t last_log_ms = 0;
     if (HAL_GetTick() - last_log_ms >= 500) {  // раз в 500 мс
-        printf("States: HW390=%d DS18B20=%d GPS=%d\r\n",
+        PRINTF("States: HW390=%d DS18B20=%d GPS=%d\r\n",
            hw390_state, ds18b20_state, gps_state);
         last_log_ms = HAL_GetTick();
     }
@@ -446,8 +506,18 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
-#ifndef DEBUG_VERSION
-/* Non-blocking printf redirect using buffer */
+#ifdef DEBUG_VERSION
+/* Blocking PRINTF redirect */
+int _write(int file, char *ptr, int len)
+{
+    if (file == STDOUT_FILENO || file == STDERR_FILENO) {
+        HAL_UART_Transmit(&huart3, (uint8_t*)ptr, len, HAL_MAX_DELAY);
+        return len;
+    }
+    return -1;
+}
+#else
+/* Non-blocking PRINTF redirect using buffer */
 int _write(int file, char *ptr, int len)
 {
     if (file == STDOUT_FILENO || file == STDERR_FILENO)
@@ -498,17 +568,7 @@ void debug_uart_process(void)
         }
     }
 }
-#else
-/* Blocking printf redirect (when DEBUG_VERSION not defined) */
-int _write(int file, char *ptr, int len)
-{
-    if (file == STDOUT_FILENO || file == STDERR_FILENO)
-    {
-        HAL_UART_Transmit(&huart3, (uint8_t*)ptr, len, HAL_MAX_DELAY);
-        return len;
-    }
-    return -1;
-}
+
 #endif
 
 /* Check if measurement period is due */
@@ -524,7 +584,7 @@ bool check_need_humidity(void)
 {
     if (!need_humidity) return false;
     if (force_humidity) return true;
-    return period_due(last_humidity_ms, HUMIDITY_PERIOD_S);
+    return period_due(last_humidity_ms, hum_period_s);
 }
 
 /* Check if temperature measurement is needed */
@@ -532,7 +592,7 @@ bool check_need_temperature(void)
 {
     if (!need_temperature) return false;
     if (force_temperature) return true;
-    return period_due(last_temperature_ms, TEMPERATURE_PERIOD_S);
+    return period_due(last_temperature_ms, tmp_period_s);
 }
 
 /* Check if GPS measurement is needed */
@@ -540,7 +600,7 @@ bool check_need_gps(void)
 {
     if (!need_gps) return false;
     if (force_gps) return true;
-    return period_due(last_gps_ms, GPS_PERIOD_S);
+    return period_due(last_gps_ms, gps_period_s);
 }
 
 /* Check if status measurement is needed */
@@ -548,7 +608,7 @@ bool check_need_status(void)
 {
     if (!need_status) return false;
     if (force_status) return true;
-    return period_due(last_status_ms, STATUS_PERIOD_S);
+    return period_due(last_status_ms, stt_period_s);
 }
 
 /* Measure state: LoRa RSSI/SNR, battery percentage, online status */
@@ -559,22 +619,22 @@ int measure_state(int16_t *out_rssi, float *out_snr, float *out_battery)
 
     int8_t result = lora_driver_read_rssi_and_snr(out_rssi, out_snr);
     if (result == 0) {
-        printf("State: RSSI = %d dBm, SNR = %.2f dB\r\n", *out_rssi, *out_snr);
+        PRINTF("State: RSSI = %d dBm, SNR = %.2f dB\r\n", *out_rssi, *out_snr);
     }
     else {
-        printf("State: Failed to read RSSI and SNR - %d\r\n", result);
-        *out_rssi = STATE_ERROR_RSSI;
-        *out_snr = STATE_ERROR_SNR;
+       PRINTF("State: Failed to read RSSI and SNR - %d\r\n", result);
+       *out_rssi = STATE_ERROR_RSSI;
+       *out_snr = STATE_ERROR_SNR;
 
-        /* Read LoRa RSSI only (ambient noise) */
-        int16_t rssi = lora_driver_read_rssi(true);
-        if (rssi == 0) {
-            printf("State: Failed to read RSSI\r\n");
-            *out_rssi = STATE_ERROR_RSSI;
-        } else {
-            *out_rssi = rssi;
-            printf("State: RSSI = %d dBm\r\n", rssi);
-        }
+       /* Read LoRa RSSI only (ambient noise) */
+       int16_t rssi = lora_driver_read_rssi(true);
+       if (rssi == 0) {
+           PRINTF("State: Failed to read RSSI\r\n");
+           *out_rssi = STATE_ERROR_RSSI;
+       } else {
+           *out_rssi = rssi;
+           PRINTF("State: RSSI = %d dBm\r\n", rssi);
+       }
     }
 
 
@@ -587,7 +647,7 @@ int measure_state(int16_t *out_rssi, float *out_snr, float *out_battery)
     float voltage_mv = 0.0f;
     if (ina219_read_voltage(&voltage_mv) != 0)
     {
-        printf("State: Failed to read battery voltage\r\n");
+        PRINTF("State: Failed to read battery voltage\r\n");
         *out_battery = STATE_ERROR_BATTERY;
     }
     else
@@ -595,7 +655,7 @@ int measure_state(int16_t *out_rssi, float *out_snr, float *out_battery)
         voltage_mv *= 1000.0f;
         if (voltage_mv < 0)
         {
-            printf("State: Invalid battery voltage\r\n");
+            PRINTF("State: Invalid battery voltage\r\n");
             *out_battery = STATE_ERROR_BATTERY;
         }
         else
@@ -613,7 +673,7 @@ int measure_state(int16_t *out_rssi, float *out_snr, float *out_battery)
             }
 
             *out_battery = percentage;
-            printf("State: Battery = %.2fV (%.1f%%)\r\n", voltage_mv / 1000.0f, percentage);
+            PRINTF("State: Battery = %.2fV (%.1f%%)\r\n", voltage_mv / 1000.0f, percentage);
         }
     }
 
@@ -648,7 +708,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+     ex: PRINTF("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

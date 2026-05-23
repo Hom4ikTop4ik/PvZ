@@ -59,7 +59,7 @@ def read_humidity():
 def read_temperature():
     return ds_sensor.read_temperature()
 
-def read_geo_mock():
+def read_gps_mock():
     lat = 54.842621 + random.uniform(-0.05, 0.05)
     lon = 83.087844 + random.uniform(-0.05, 0.05)
     return (lat, lon)
@@ -114,7 +114,7 @@ def send_temperature(
     payload = f"{device_id};{timestamp};{msg_rnd_id};{msg_type};{temperature:.2f}"
     lora.send_bytes(payload.encode("utf-8"))
 
-def send_geo(
+def send_gps(
         lat: float, # -90..+90
         lon: float, # -180..+180
         device_id = None,
@@ -126,7 +126,7 @@ def send_geo(
         timestamp = get_iso_timestamp()
     
     msg_rnd_id = random.randint(0, 999_999)
-    msg_type = "geo"
+    msg_type = "gps"
 
     payload = f"{device_id};{timestamp};{msg_rnd_id};{msg_type};{lat:.6f},{lon:.6f}"
     lora.send_bytes(payload.encode("utf-8"))
@@ -245,15 +245,15 @@ while True:
         gps_sensor.poll()
         if gps_sensor.check_ready():
             date, timee, lat, lon = gps_sensor.read_lat_lon()
-            print(f"  geo: {date} {timee} {lat}, {lon}")
-            send_geo(lat, lon, device_id=device_id)
+            print(f"  gps: {date} {timee} {lat}, {lon}")
+            send_gps(lat, lon, device_id=device_id)
             gps_sensor.power_off()
             time.sleep(1)
         else:
             lat = 54.847487 + random.uniform(-0.001, +0.001)
             lon = 83.092509 + random.uniform(-0.001, +0.001)
-            send_geo(lat, lon, device_id=device_id)
-            print(f"  geo: {lat}, {lon}")
+            send_gps(lat, lon, device_id=device_id)
+            print(f"  gps: {lat}, {lon}")
             time.sleep(1)
 
         # TODO

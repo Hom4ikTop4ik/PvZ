@@ -1,14 +1,16 @@
+#include "stm32l4xx_hal.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "lora_app.h"
 #include "lora_join.h"
 #include "lora_config.h"
 #include "lora_identity.h"
 #include "lora_packet.h"
 
-#include "stm32l4xx_hal.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "printf.h"
 
 static uint32_t last_join_ms;
 
@@ -72,7 +74,7 @@ void lora_join_tick()
     const char *node_mac = lora_identity_get_mac();
     if (lora_app_send_join(node_mac)) {
         last_join_ms = now;
-        printf("[JOIN] Request added to lora-tx-queue\r\n");
+        PRINTF("[JOIN] Request added to lora-tx-queue\r\n");
     }
 }
 
@@ -90,7 +92,7 @@ lora_join_result_t lora_join_process_payload(const char *payload)
     char *mac;
     char *node_id;
 
-    printf("[JOIN] 1) lora_join_process_payload, payload: %s\r\n", payload);
+    PRINTF("[JOIN] 1) lora_join_process_payload, payload: %s\r\n", payload);
 
     if (!payload) {
         return LORA_JOIN_NOT_CONTROL;
@@ -109,23 +111,23 @@ lora_join_result_t lora_join_process_payload(const char *payload)
     (void)timestamp;
     (void)msg_rnd;
 
-    printf("[JOIN] 2.1) before checkings\r\n");
+    PRINTF("[JOIN] 2.1) before checkings\r\n");
     if (!device_id || !msg_type || !msg_data) {
-    	printf("[JOIN] 2.1) error 1\r\n");
+    	PRINTF("[JOIN] 2.1) error 1\r\n");
         return LORA_JOIN_NOT_CONTROL;
     }
 
     if (strcmp(msg_type, LORA_MSG_JOIN) == 0) {
-    	printf("[JOIN] 2.1) error 2\r\n");
+    	PRINTF("[JOIN] 2.1) error 2\r\n");
         return LORA_JOIN_RETRANSMIT;
     }
 
     if (strcmp(msg_type, LORA_MSG_JOIN_ACK) != 0) {
-    	printf("[JOIN] 2.1) error 3\r\n");
+    	PRINTF("[JOIN] 2.1) error 3\r\n");
         return LORA_JOIN_NOT_CONTROL;
     }
 
-    printf("[JOIN] 2.2) after checkings\r\n");
+    PRINTF("[JOIN] 2.2) after checkings\r\n");
 
     strncpy(data, msg_data, sizeof(data) - 1U);
     data[sizeof(data) - 1U] = '\0';
@@ -134,10 +136,10 @@ lora_join_result_t lora_join_process_payload(const char *payload)
     mac = next_csv(&csv_cursor);
     node_id = next_csv(&csv_cursor);
 
-    printf("[JOIN] 3.1) before checkings\r\n");
+    PRINTF("[JOIN] 3.1) before checkings\r\n");
 
     if (!mac || !node_id) {
-        printf("[JOIN] Invalid join_ack payload\r\n");
+        PRINTF("[JOIN] Invalid join_ack payload\r\n");
         return LORA_JOIN_CONSUMED;
     }
 
@@ -145,7 +147,7 @@ lora_join_result_t lora_join_process_payload(const char *payload)
         return LORA_JOIN_RETRANSMIT;
     }
 
-    printf("[JOIN] 3.2) after checkings - set_node '%s'\r\n", node_id);
+    PRINTF("[JOIN] 3.2) after checkings - set_node '%s'\r\n", node_id);
 
     lora_identity_set_node_id(node_id);
     return LORA_JOIN_CONSUMED;

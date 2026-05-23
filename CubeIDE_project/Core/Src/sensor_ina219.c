@@ -1,9 +1,12 @@
-#include "sensor_ina219.h"
-#include "i2c.h"
-#include "main.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+
+#include "i2c.h"
+#include "main.h"
+
+#include "sensor_ina219.h"
+#include "printf.h"
 
 /* Внешний дескриптор I2C из i2c.c */
 extern I2C_HandleTypeDef hi2c1;
@@ -193,7 +196,7 @@ void ina219_tick(void)
             ina219_state = INA219_STATE_IDLE;
             break;
     }
-	printf("ina219_result_ready - %d\r\n", ina219_result_ready);
+	PRINTF("ina219_result_ready - %d\r\n", ina219_result_ready);
 }
 
 /* Получение истории */

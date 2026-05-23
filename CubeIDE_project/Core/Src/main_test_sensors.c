@@ -112,20 +112,20 @@ int main(void)
   DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
   DWT->CYCCNT = 0;
   
-  printf("Sensor modules test starting...\r\n");
+  PRINTF("Sensor modules test starting...\r\n");
   
   /* Инициализация датчиков */
   if (hw390_init() != SENSOR_OK) {
-    printf("HW390 init failed\r\n");
+    PRINTF("HW390 init failed\r\n");
   }
   if (ds18b20_init() != SENSOR_OK) {
-    printf("DS18B20 init failed\r\n");
+    PRINTF("DS18B20 init failed\r\n");
   }
   if (ina219_init() != SENSOR_OK) {
-    printf("INA219 init failed\r\n");
+    PRINTF("INA219 init failed\r\n");
   }
   
-  printf("All sensors initialized\r\n");
+  PRINTF("All sensors initialized\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -143,15 +143,15 @@ int main(void)
 
       sensor_reading_t reading;
 
-      printf("SystemCoreClock from HAL: %ld Hz\n", SystemCoreClock);
+      PRINTF("SystemCoreClock from HAL: %ld Hz\n", SystemCoreClock);
 
       /* Чтение HW390 */
       hw390_start();
       while (hw390_poll() == 0);  /* Ожидание завершения */
       if (hw390_get(&reading) == SENSOR_OK) {
-        printf("HW390: %.1f%% (raw=%d)\r\n", reading.value, reading.raw);
+        PRINTF("HW390: %.1f%% (raw=%d)\r\n", reading.value, reading.raw);
       } else {
-        printf("HW390: ERROR %d\r\n", reading.error);
+        PRINTF("HW390: ERROR %d\r\n", reading.error);
       }
 
       /* Чтение DS18B20 */
@@ -161,9 +161,9 @@ int main(void)
         /* DS18B20 занимает ~750мс, здесь можно добавить sleep */
       }
       if (ds18b20_get(&reading) == SENSOR_OK) {
-        printf("DS18B20: %.2fC (raw=%d)\r\n", reading.value, reading.raw);
+        PRINTF("DS18B20: %.2fC (raw=%d)\r\n", reading.value, reading.raw);
       } else {
-        printf("DS18B20: ERROR %d\r\n", reading.error);
+        PRINTF("DS18B20: ERROR %d\r\n", reading.error);
       }
 
       /* Чтение INA219 */
@@ -171,12 +171,12 @@ int main(void)
       while (ina219_poll() == 0);
       if (ina219_get(&reading) == SENSOR_OK) {
         float voltage = ina219_read_voltage();
-        printf("INA219: %.0f%% (%.2fV)\r\n", reading.value, voltage);
+        PRINTF("INA219: %.0f%% (%.2fV)\r\n", reading.value, voltage);
       } else {
-        printf("INA219: ERROR %d\r\n", reading.error);
+        PRINTF("INA219: ERROR %d\r\n", reading.error);
       }
 
-      printf("---\r\n");
+      PRINTF("---\r\n");
     }
 
     HAL_Delay(100);  /* 100мс сон между проверками */
@@ -244,7 +244,7 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
-/* Перенаправление printf на USART3 (DEBUG) */
+/* Перенаправление PRINTF на USART3 (DEBUG) */
 int _write(int file, char *ptr, int len)
 {
     if (file == STDOUT_FILENO || file == STDERR_FILENO) {
@@ -283,7 +283,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+     ex: PRINTF("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

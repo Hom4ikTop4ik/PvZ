@@ -1,35 +1,39 @@
-#include "lora_packet.h"
-#include "lora_identity.h"
-#include "main.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+#include "main.h"
+#include "rtc.h"
+
+#include "lora_packet.h"
+#include "lora_identity.h"
+#include "utils.h"
 
 /* ============================================================================
  * Global Flags - управление отправкой
  * ============================================================================ */
 volatile bool lora_enable_humidity = true;
 volatile bool lora_enable_temperature = true;
-volatile bool lora_enable_geo = true;
+volatile bool lora_enable_gps = true;
 volatile bool lora_enable_status = true;
 
-volatile bool lora_force_humidity = false;
-volatile bool lora_force_temperature = false;
-volatile bool lora_force_geo = false;
-volatile bool lora_force_status = false;
+volatile bool force_humidity = false;
+volatile bool force_temperature = false;
+volatile bool force_gps = false;
+volatile bool force_status = false;
 
 /* Инициализация флагов */
 void lora_packet_init(void)
 {
     lora_enable_humidity = true;
     lora_enable_temperature = true;
-    lora_enable_geo = true;
+    lora_enable_gps = true;
     lora_enable_status = true;
     
-    lora_force_humidity = false;
-    lora_force_temperature = false;
-    lora_force_geo = false;
-    lora_force_status = false;
+    force_humidity = false;
+    force_temperature = false;
+    force_gps = false;
+    force_status = false;
 }
 
 /* Простой random (LCG) - для msg_rnd_id достаточно */
@@ -43,9 +47,10 @@ uint32_t lora_packet_random_id(void)
 /* Timestamp: используем HAL_GetTick как приблизительное время в секундах */
 void lora_packet_timestamp(char *buffer, uint8_t len)
 {
-	// TODO: ISO timestamp format
-    uint32_t seconds = HAL_GetTick() / 1000;
-    snprintf(buffer, len, "%lu", (unsigned long)seconds);
+    //uint32_t seconds = HAL_GetTick() / 1000;
+    //snprintf(buffer, len, "%lu", (unsigned long)seconds);
+
+    rtc_iso8601_string(buffer, len, &hrtc);
 }
 
 /* ============================================================================
@@ -93,9 +98,9 @@ uint16_t lora_packet_build_temperature(uint8_t *buffer, uint16_t max_len, float 
     return (written > 0 && (uint16_t)written < max_len) ? (uint16_t)written : 0;
 }
 
-/* Координаты (пример): NODE_ID;123456789;123456;geo;55.755826,37.617300 */
+/* Координаты (пример): NODE_ID;123456789;123456;gps;55.755826,37.617300 */
 // Возвращает длину пакета или 0 при ошибке
-uint16_t lora_packet_build_geo(uint8_t *buffer, uint16_t max_len, float lat, float lon)
+uint16_t lora_packet_build_gps(uint8_t *buffer, uint16_t max_len, float lat, float lon)
 {
     if (!buffer || max_len == 0) return 0;
     
@@ -159,22 +164,22 @@ uint16_t lora_packet_build_join(uint8_t *buffer, uint16_t max_len, const char *n
  * ============================================================================ */
 bool lora_packet_should_send_humidity(void)
 {
-    return lora_enable_humidity || lora_force_humidity;
+    return lora_enable_humidity || force_humidity;
 }
 
 bool lora_packet_should_send_temperature(void)
 {
-    return lora_enable_temperature || lora_force_temperature;
+    return lora_enable_temperature || force_temperature;
 }
 
-bool lora_packet_should_send_geo(void)
+bool lora_packet_should_send_gps(void)
 {
-    return lora_enable_geo || lora_force_geo;
+    return lora_enable_gps || force_gps;
 }
 
 bool lora_packet_should_send_state(void)
 {
-    return lora_enable_status || lora_force_status;
+    return lora_enable_status || force_status;
 }
 
 /* ============================================================================
@@ -186,29 +191,29 @@ bool lora_packet_should_send_state(void)
 
 void lora_packet_clear_force_humidity(void)
 {
-    lora_force_humidity = false;
+    force_humidity = false;
 }
 
 void lora_packet_clear_force_temperature(void)
 {
-    lora_force_temperature = false;
+    force_temperature = false;
 }
 
-void lora_packet_clear_force_geo(void)
+void lora_packet_clear_force_gps(void)
 {
-    lora_force_geo = false;
+    force_gps = false;
 }
 
 void lora_packet_clear_force_state(void)
 {
-    lora_force_status = false;
+    force_status = false;
 }
 
 /* Сброс всех force-флагов (для совместимости) */
 void lora_packet_clear_force_all(void)
 {
-    lora_force_humidity = false;
-    lora_force_temperature = false;
-    lora_force_geo = false;
-    lora_force_status = false;
+    force_humidity = false;
+    force_temperature = false;
+    force_gps = false;
+    force_status = false;
 }

@@ -103,7 +103,7 @@
 ### 3.5 Одноразовые форсирующие флаги
 - `force_humidity_measure`
 - `force_temperature_measure`
-- `force_geo_measure`
+- `force_gps_measure`
 - `force_status_measure`
 
 ### 3.6 Таймеры последнего измерения
@@ -116,7 +116,7 @@
 Функции:
 - `check_need_humidity_measurement()`
 - `check_need_temperature_measurement()`
-- `check_need_geo_measurement()`
+- `check_need_gps_measurement()`
 - `check_need_status_measurement()`
 
 Они возвращают `True`, если:
@@ -135,7 +135,7 @@
 Функции:
 - `send_humidity()`
 - `send_temperature()`
-- `send_geo()`
+- `send_gps()`
 - `send_state()`
 
 Они **не отправляют сразу**, а кладут сообщение в LoRaTxQueue очередь.
@@ -148,7 +148,7 @@
 #### 3.10.2 Типы msg_type
 - `hum`
 - `tmp`
-- `geo`
+- `gps`
 - `stt`
 - `cmd`
 
@@ -255,7 +255,7 @@ Gateway подписывается на:
 - проверяет history;
 - если `hum` — публикует humidity;
 - если `tmp` — публикует temperature;
-- если `geo` — публикует location;
+- если `gps` — публикует location;
 - если `stt` — публикует state;
 - если ошибка MQTT — сбрасывает клиента и переподключается.
 

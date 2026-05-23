@@ -1,10 +1,13 @@
-#include "sensor_ds18b20.h"
-#include "main.h"
-#include "gpio.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
+
+#include "main.h"
+#include "gpio.h"
 #include "core_cm4.h"  /* Для DWT регистров */
+
+#include "printf.h"
+#include "sensor_ds18b20.h"
 
 /* Конфигурация пина DS18B20 - PA6 */
 #define DS18B20_PORT     GPIOA
@@ -323,7 +326,7 @@ void ds18b20_tick(void)
             ds18b20_state = DS18B20_STATE_IDLE;
             break;
     }
-	printf("ds18b20_result_ready - %d\r\n", ds18b20_result_ready);
+	PRINTF("ds18b20_result_ready - %d\r\n", ds18b20_result_ready);
 }
 
 /* Получение истории */
