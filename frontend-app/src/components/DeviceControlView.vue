@@ -60,7 +60,7 @@
           <button
             class="btn primary"
             type="button"
-            :disabled="pendingCommand === 'wake'"
+            :disabled="pendingCommand === 'wake' || pendingCommand === 'policy'"
             @click="sendSimpleCommand('wake')"
           >
             {{ pendingCommand === 'wake' ? 'Отправляем...' : 'Включить устройство' }}
@@ -69,7 +69,7 @@
           <button
             class="btn"
             type="button"
-            :disabled="pendingCommand === 'sleep'"
+            :disabled="pendingCommand === 'sleep' || pendingCommand === 'policy'"
             @click="sendSimpleCommand('sleep')"
           >
             {{ pendingCommand === 'sleep' ? 'Отправляем...' : 'Выключить устройство' }}
@@ -78,7 +78,7 @@
           <button
             class="btn"
             type="button"
-            :disabled="pendingCommand === 'fetch'"
+            :disabled="pendingCommand === 'fetch' || pendingCommand === 'policy'"
             @click="sendSimpleCommand('fetch')"
           >
             {{ pendingCommand === 'fetch' ? 'Запрашиваем...' : 'Запросить свежие данные' }}
@@ -150,10 +150,10 @@
           <button
             class="btn primary"
             type="button"
-            :disabled="pendingCommand === 'set_policy'"
+            :disabled="pendingCommand === 'policy'"
             @click="savePolicy"
           >
-            {{ pendingCommand === 'set_policy' ? 'Сохраняем...' : 'Сохранить политику' }}
+            {{ pendingCommand === 'policy' ? 'Сохраняем...' : 'Сохранить политику' }}
           </button>
         </div>
       </div>
@@ -190,20 +190,20 @@ const deviceId = computed(() => String(route.params.deviceId || ''))
 const tenantId = computed(() => String(route.query.tenant_id || ''))
 
 const periodOptions = [
-  { value: '15s', label: '15 секунд' },
-  { value: '60s', label: '60 секунд' },
-  { value: '1h', label: '1 час' },
-  { value: '3h', label: '3 часа' },
-  { value: '1d', label: 'Сутки' },
-  { value: '1w', label: 'Неделя' },
-  { value: '1mo', label: 'Месяц' },
+  { value: '15', label: '15 секунд' },
+  { value: '60', label: '60 секунд' },
+  { value: '3600', label: '1 час' },
+  { value: '10800', label: '3 часа' },
+  { value: '86400', label: 'Сутки' },
+  { value: '604800', label: 'Неделя' },
+  { value: '2592000', label: 'Месяц' },
 ]
 
 const defaultSchedule = () => ({
-  hum: '60s',
-  tmp: '60s',
-  geo: '1h',
-  stt: '60s',
+  hum: '60',
+  tmp: '600',
+  geo: '86400',
+  stt: '3600',
 })
 
 const schedule = reactive(defaultSchedule())
@@ -278,10 +278,10 @@ function restorePolicyFromStorage() {
 
     const parsed = JSON.parse(raw)
     Object.assign(schedule, {
-      hum: parsed?.hum || '60s',
-      tmp: parsed?.tmp || '60s',
-      geo: parsed?.geo || '1h',
-      stt: parsed?.stt || '60s',
+      hum: String(parsed?.hum || '60'),
+      tmp: String(parsed?.tmp || '600'),
+      geo: String(parsed?.geo || '86400'),
+      stt: String(parsed?.stt || '3600'),
     })
   } catch {
     Object.assign(schedule, defaultSchedule())
@@ -292,17 +292,16 @@ function persistPolicyToStorage() {
   localStorage.setItem(
     scheduleStorageKey.value,
     JSON.stringify({
-      hum: schedule.hum,
-      tmp: schedule.tmp,
-      geo: schedule.geo,
-      stt: schedule.stt,
+      hum: String(schedule.hum),
+      tmp: String(schedule.tmp),
+      geo: String(schedule.geo),
+      stt: String(schedule.stt),
     })
   )
 }
 
 function extractErrorMessage(e, fallback = 'Не удалось отправить команду') {
   const raw = e?.body?.detail ?? e?.message ?? fallback
-
   if (typeof raw === 'string') return raw
   if (Array.isArray(raw) && raw[0]?.msg) return raw[0].msg
   return fallback
@@ -365,22 +364,26 @@ async function loadDevice() {
   }
 }
 
-async function sendCommand(type, params = {}) {
+async function postCommand(type, params = []) {
+  if (!device.value) return
+
+  const query = device.value.tenant_id
+    ? `?tenant_id=${encodeURIComponent(device.value.tenant_id)}`
+    : ''
+
+  await api.post(`/devices/${encodeURIComponent(device.value.device_id)}/command${query}`, {
+    type,
+    params,
+    retain: false,
+  })
+}
+
+async function sendSimpleCommand(type) {
   if (!device.value) return
 
   pendingCommand.value = type
-
   try {
-    const query = device.value.tenant_id
-      ? `?tenant_id=${encodeURIComponent(device.value.tenant_id)}`
-      : ''
-
-    await api.post(`/devices/${encodeURIComponent(device.value.device_id)}/command${query}`, {
-      type,
-      params,
-      retain: false,
-    })
-
+    await postCommand(type, [])
     toast.success('Команда отправлена')
   } catch (e) {
     toast.error(extractErrorMessage(e))
@@ -389,19 +392,25 @@ async function sendCommand(type, params = {}) {
   }
 }
 
-async function sendSimpleCommand(type) {
-  await sendCommand(type, {})
-}
-
 async function savePolicy() {
-  persistPolicyToStorage()
+  if (!device.value) return
 
-  await sendCommand('set_policy', {
-    hum: schedule.hum,
-    tmp: schedule.tmp,
-    geo: schedule.geo,
-    stt: schedule.stt,
-  })
+  pendingCommand.value = 'policy'
+
+  try {
+    persistPolicyToStorage()
+
+    await postCommand('interval', ['hum', String(Number(schedule.hum))])
+    await postCommand('interval', ['tmp', String(Number(schedule.tmp))])
+    await postCommand('interval', ['geo', String(Number(schedule.geo))])
+    await postCommand('interval', ['stt', String(Number(schedule.stt))])
+
+    toast.success('Политика обновления сохранена')
+  } catch (e) {
+    toast.error(extractErrorMessage(e, 'Не удалось сохранить политику'))
+  } finally {
+    pendingCommand.value = ''
+  }
 }
 
 onMounted(loadDevice)
