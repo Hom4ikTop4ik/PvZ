@@ -60,8 +60,8 @@
           <button
             class="btn primary"
             type="button"
-            :disabled="pendingCommand === 'wake'"
-            @click="sendCommand('wake')"
+            :disabled="pendingCommand === 'wake' || pendingCommand === 'policy'"
+            @click="sendSimpleCommand('wake')"
           >
             {{ pendingCommand === 'wake' ? 'Отправляем...' : 'Включить устройство' }}
           </button>
@@ -69,8 +69,8 @@
           <button
             class="btn"
             type="button"
-            :disabled="pendingCommand === 'sleep'"
-            @click="sendCommand('sleep')"
+            :disabled="pendingCommand === 'sleep' || pendingCommand === 'policy'"
+            @click="sendSimpleCommand('sleep')"
           >
             {{ pendingCommand === 'sleep' ? 'Отправляем...' : 'Выключить устройство' }}
           </button>
@@ -78,8 +78,8 @@
           <button
             class="btn"
             type="button"
-            :disabled="pendingCommand === 'fetch'"
-            @click="sendCommand('fetch')"
+            :disabled="pendingCommand === 'fetch' || pendingCommand === 'policy'"
+            @click="sendSimpleCommand('fetch')"
           >
             {{ pendingCommand === 'fetch' ? 'Запрашиваем...' : 'Запросить свежие данные' }}
           </button>
@@ -108,6 +108,78 @@
           </div>
         </div>
       </div>
+
+      <div class="card p-24">
+        <h3 class="section-title">Политика обновления данных</h3>
+        <div class="helper settings-subtitle">
+          Для каждого типа данных можно задать собственный период обновления.
+        </div>
+
+        <div class="schedule-grid">
+          <div class="info-box">
+            <span class="info-label">Влажность</span>
+            <select v-model="schedule.hum" class="input">
+              <option
+                v-for="option in periodOptions"
+                :key="`hum-${option.value}`"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="info-box">
+            <span class="info-label">Температура</span>
+            <select v-model="schedule.tmp" class="input">
+              <option
+                v-for="option in periodOptions"
+                :key="`tmp-${option.value}`"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="info-box">
+            <span class="info-label">Геопозиция</span>
+            <select v-model="schedule.geo" class="input">
+              <option
+                v-for="option in periodOptions"
+                :key="`geo-${option.value}`"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="info-box">
+            <span class="info-label">Состояние</span>
+            <select v-model="schedule.stt" class="input">
+              <option
+                v-for="option in periodOptions"
+                :key="`stt-${option.value}`"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div class="policy-actions">
+          <button
+            class="btn primary"
+            type="button"
+            :disabled="pendingCommand === 'policy'"
+            @click="savePolicy"
+          >
+            {{ pendingCommand === 'policy' ? 'Сохраняем...' : 'Сохранить политику' }}
+          </button>
+        </div>
+      </div>
     </section>
   </div>
 
@@ -117,7 +189,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import { api } from '../api'
@@ -140,6 +212,25 @@ const intervalSeconds = ref(60)
 
 const deviceId = computed(() => String(route.params.deviceId || ''))
 const tenantId = computed(() => String(route.query.tenant_id || ''))
+
+const periodOptions = [
+  { value: '15', label: '15 секунд' },
+  { value: '60', label: '60 секунд' },
+  { value: '3600', label: '1 час' },
+  { value: '10800', label: '3 часа' },
+  { value: '86400', label: 'Сутки' },
+  { value: '604800', label: 'Неделя' },
+  { value: '2592000', label: 'Месяц' },
+]
+
+const defaultSchedule = () => ({
+  hum: '60',
+  tmp: '600',
+  geo: '86400',
+  stt: '3600',
+})
+
+const schedule = reactive(defaultSchedule())
 
 function normalizeRows(payload) {
   if (Array.isArray(payload)) return payload
@@ -199,6 +290,47 @@ const locationUpdatedAt = computed(() => {
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString('ru-RU')
 })
 
+const scheduleStorageKey = computed(() => `pvz_schedule_${deviceId.value}`)
+
+function restorePolicyFromStorage() {
+  try {
+    const raw = localStorage.getItem(scheduleStorageKey.value)
+    if (!raw) {
+      Object.assign(schedule, defaultSchedule())
+      return
+    }
+
+    const parsed = JSON.parse(raw)
+    Object.assign(schedule, {
+      hum: String(parsed?.hum || '60'),
+      tmp: String(parsed?.tmp || '600'),
+      geo: String(parsed?.geo || '86400'),
+      stt: String(parsed?.stt || '3600'),
+    })
+  } catch {
+    Object.assign(schedule, defaultSchedule())
+  }
+}
+
+function persistPolicyToStorage() {
+  localStorage.setItem(
+    scheduleStorageKey.value,
+    JSON.stringify({
+      hum: String(schedule.hum),
+      tmp: String(schedule.tmp),
+      geo: String(schedule.geo),
+      stt: String(schedule.stt),
+    })
+  )
+}
+
+function extractErrorMessage(e, fallback = 'Не удалось отправить команду') {
+  const raw = e?.body?.detail ?? e?.message ?? fallback
+  if (typeof raw === 'string') return raw
+  if (Array.isArray(raw) && raw[0]?.msg) return raw[0].msg
+  return fallback
+}
+
 async function loadDevice() {
   loading.value = true
   error.value = ''
@@ -224,6 +356,7 @@ async function loadDevice() {
             (item) => String(item.tenant_id) === String(currentTenantId)
           )
           device.value = normalizeDevice(match, tenant)
+          restorePolicyFromStorage()
           return
         }
       } catch (e) {
@@ -240,6 +373,7 @@ async function loadDevice() {
 
       if (match) {
         device.value = normalizeDevice(match)
+        restorePolicyFromStorage()
         return
       }
     } catch (e) {
@@ -248,31 +382,56 @@ async function loadDevice() {
 
     error.value = 'Не удалось найти устройство'
   } catch (e) {
-    error.value = e?.body?.detail || e?.message || 'Ошибка загрузки устройства'
+    error.value = extractErrorMessage(e, 'Ошибка загрузки устройства')
   } finally {
     loading.value = false
   }
 }
 
-async function sendCommand(type) {
+async function postCommand(type, params = []) {
+  if (!device.value) return
+
+  const query = device.value.tenant_id
+    ? `?tenant_id=${encodeURIComponent(device.value.tenant_id)}`
+    : ''
+
+  await api.post(`/devices/${encodeURIComponent(device.value.device_id)}/command${query}`, {
+    type,
+    params,
+    retain: false,
+  })
+}
+
+async function sendSimpleCommand(type) {
   if (!device.value) return
 
   pendingCommand.value = type
-
   try {
-    const query = device.value.tenant_id
-      ? `?tenant_id=${encodeURIComponent(device.value.tenant_id)}`
-      : ''
-
-    await api.post(`/devices/${encodeURIComponent(device.value.device_id)}/command${query}`, {
-      type,
-      params: {},
-      retain: false,
-    })
-
+    await postCommand(type, [])
     toast.success('Команда отправлена')
   } catch (e) {
-    toast.error(e?.body?.detail || e?.message || 'Не удалось отправить команду')
+    toast.error(extractErrorMessage(e))
+  } finally {
+    pendingCommand.value = ''
+  }
+}
+
+async function savePolicy() {
+  if (!device.value) return
+
+  pendingCommand.value = 'policy'
+
+  try {
+    persistPolicyToStorage()
+
+    await postCommand('interval', ['hum', String(Number(schedule.hum))])
+    await postCommand('interval', ['tmp', String(Number(schedule.tmp))])
+    await postCommand('interval', ['geo', String(Number(schedule.geo))])
+    await postCommand('interval', ['stt', String(Number(schedule.stt))])
+
+    toast.success('Политика обновления сохранена')
+  } catch (e) {
+    toast.error(extractErrorMessage(e, 'Не удалось сохранить политику'))
   } finally {
     pendingCommand.value = ''
   }
@@ -367,6 +526,24 @@ onMounted(loadDevice)
   gap: 12px;
 }
 
+.schedule-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.policy-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.settings-subtitle {
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
 .warning-chip {
   margin-top: 10px;
   padding: 10px 12px;
@@ -383,7 +560,8 @@ onMounted(loadDevice)
 
 @media (max-width: 900px) {
   .device-shell__grid,
-  .device-layout {
+  .device-layout,
+  .schedule-grid {
     grid-template-columns: 1fr;
   }
 }

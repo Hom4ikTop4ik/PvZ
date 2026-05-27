@@ -30,9 +30,6 @@
 
           <span style="flex:1"></span>
 
-          <span class="helper user-label">
-            Вошли как {{ userEmail }}
-          </span>
           <button class="tab" type="button" @click="handleLogout">
             Выйти
           </button>
@@ -64,7 +61,7 @@ import { useAuth } from './auth'
 
 const router = useRouter()
 const toast = useToast()
-const { isAuth, userEmail, logout } = useAuth()
+const { isAuth, logout } = useAuth()
 
 function handleLogout() {
   logout()
@@ -72,9 +69,3 @@ function handleLogout() {
   router.push('/login')
 }
 </script>
-
-<style scoped>
-.user-label {
-  margin-right: 8px;
-}
-</style>
