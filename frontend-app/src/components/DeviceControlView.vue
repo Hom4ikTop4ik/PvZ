@@ -94,7 +94,7 @@
 
         <div class="schedule-grid">
           <div class="info-box">
-            <span class="info-label">Влажность (hum)</span>
+            <span class="info-label">Влажность</span>
             <select v-model="schedule.hum" class="input">
               <option
                 v-for="option in periodOptions"
@@ -107,7 +107,7 @@
           </div>
 
           <div class="info-box">
-            <span class="info-label">Температура (tmp)</span>
+            <span class="info-label">Температура</span>
             <select v-model="schedule.tmp" class="input">
               <option
                 v-for="option in periodOptions"
@@ -120,7 +120,7 @@
           </div>
 
           <div class="info-box">
-            <span class="info-label">Геопозиция (geo)</span>
+            <span class="info-label">Геопозиция</span>
             <select v-model="schedule.geo" class="input">
               <option
                 v-for="option in periodOptions"
@@ -133,7 +133,7 @@
           </div>
 
           <div class="info-box">
-            <span class="info-label">Состояние (stt)</span>
+            <span class="info-label">Состояние</span>
             <select v-model="schedule.stt" class="input">
               <option
                 v-for="option in periodOptions"
@@ -513,4 +513,3 @@ onMounted(loadDevice)
   }
 }
 </style>
-
