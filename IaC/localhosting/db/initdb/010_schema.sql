@@ -197,4 +197,27 @@ FROM iot.devices d
 LEFT JOIN iot.state s    ON s.device_id = d.device_id
 LEFT JOIN iot.location l ON l.device_id = d.device_id;
 
+CREATE TABLE IF NOT EXISTS iot.user_notification_prefs (
+  user_id        uuid NOT NULL REFERENCES iot.users(user_id) ON DELETE CASCADE,
+  device_id      uuid NOT NULL REFERENCES iot.devices(device_id) ON DELETE CASCADE,
+  master_enabled boolean NOT NULL DEFAULT true,
+  rules          jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, device_id)
+);
+
+CREATE INDEX IF NOT EXISTS user_notification_prefs_user_idx
+  ON iot.user_notification_prefs(user_id);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'tr_user_notification_prefs_updated'
+  ) THEN
+    CREATE TRIGGER tr_user_notification_prefs_updated
+    BEFORE UPDATE ON iot.user_notification_prefs
+    FOR EACH ROW EXECUTE FUNCTION iot.tg_set_updated_at();
+  END IF;
+END$$;
+
 DROP INDEX IF EXISTS iot.devices_external_id_uq;

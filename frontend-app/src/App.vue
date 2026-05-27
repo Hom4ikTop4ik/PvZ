@@ -28,6 +28,10 @@
             Управление
           </router-link>
 
+          <router-link to="/notifications" class="tab">
+            Уведомления
+          </router-link>
+
           <span style="flex:1"></span>
 
           <button class="tab" type="button" @click="handleLogout">
@@ -55,9 +59,11 @@
 </template>
 
 <script setup>
+import { onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import { useAuth } from './auth'
+import { startNotificationWatcher, stopNotificationWatcher } from './notifications'
 
 const router = useRouter()
 const toast = useToast()
@@ -65,7 +71,17 @@ const { isAuth, logout } = useAuth()
 
 function handleLogout() {
   logout()
+  stopNotificationWatcher()
   toast.info('Вы вышли из аккаунта')
   router.push('/login')
 }
+
+onMounted(() => {
+  if (isAuth.value) startNotificationWatcher(toast)
+})
+
+watch(isAuth, (value) => {
+  if (value) startNotificationWatcher(toast)
+  else stopNotificationWatcher()
+})
 </script>

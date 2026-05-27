@@ -9,6 +9,7 @@ import TenantsView from './components/TenantsView.vue'
 import MapView from './components/MapView.vue'
 import ManagementView from './components/ManagementView.vue'
 import DeviceControlView from './components/DeviceControlView.vue'
+import NotificationsView from './components/NotificationsView.vue'
 
 const routes = [
   { path: '/', component: HomeView },
@@ -21,6 +22,8 @@ const routes = [
 
   { path: '/management', component: ManagementView, meta: { requiresAuth: true } },
   { path: '/management/:deviceId', component: DeviceControlView, meta: { requiresAuth: true } },
+
+  { path: '/notifications', component: NotificationsView, meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({

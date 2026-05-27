@@ -2,7 +2,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from .routers import auth as r_auth, devices as r_devices, map as r_map, charts as r_charts, tenants as r_tenants
+from .routers import auth as r_auth, devices as r_devices, map as r_map, charts as r_charts, tenants as r_tenants, notifications as r_notifications
 from .mqtt_runtime import run_mqtt_forever
 import logging
 from .services.config import settings
@@ -23,6 +23,7 @@ app.include_router(r_devices.router)
 app.include_router(r_map.router)
 app.include_router(r_charts.router)
 app.include_router(r_tenants.router)
+app.include_router(r_notifications.router)
 
 
 @app.on_event("startup")

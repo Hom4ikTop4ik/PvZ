@@ -129,6 +129,97 @@ function palette(i) {
   return colors[i % colors.length]
 }
 
+function csvEscape(value) {
+  if (value == null) return ''
+  const s = String(value)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+function downloadCsv(filename, content) {
+  const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function buildCsv(scope = 'all') {
+  const deviceMap = new Map(devices.value.map(d => [d.device_id, d]))
+  const wantTemp = scope === 'all' || scope === 'temperature'
+  const wantHum = scope === 'all' || scope === 'humidity'
+
+  const rowsByDeviceTs = new Map()
+  const ensureRow = (deviceId, ts) => {
+    if (!rowsByDeviceTs.has(deviceId)) rowsByDeviceTs.set(deviceId, new Map())
+    const perTs = rowsByDeviceTs.get(deviceId)
+    if (!perTs.has(ts)) perTs.set(ts, { temperature: null, humidity: null, location: null })
+    return perTs.get(ts)
+  }
+
+  if (wantTemp) {
+    for (const series of st.temperatureSeries) {
+      for (const p of series.points) {
+        const row = ensureRow(series.device_id, p.x)
+        row.temperature = p.y
+        if (row.location == null) row.location = p.location ?? null
+      }
+    }
+  }
+  if (wantHum) {
+    for (const series of st.humiditySeries) {
+      for (const p of series.points) {
+        const row = ensureRow(series.device_id, p.x)
+        row.humidity = p.y
+        if (row.location == null) row.location = p.location ?? null
+      }
+    }
+  }
+
+  const columns = ['device_id', 'external_id', 'ts']
+  if (wantTemp) columns.push('temperature')
+  if (wantHum) columns.push('humidity')
+  columns.push('location')
+
+  const lines = [columns.join(',')]
+  for (const [deviceId, perTs] of rowsByDeviceTs) {
+    const dev = deviceMap.get(deviceId) || {}
+    const sorted = Array.from(perTs.entries()).sort((a, b) => a[0] - b[0])
+    for (const [ts, row] of sorted) {
+      const fields = [
+        csvEscape(deviceId),
+        csvEscape(dev.external_id ?? ''),
+        new Date(ts).toISOString(),
+      ]
+      if (wantTemp) fields.push(row.temperature == null ? '' : row.temperature)
+      if (wantHum) fields.push(row.humidity == null ? '' : row.humidity)
+      fields.push(csvEscape(row.location ?? ''))
+      lines.push(fields.join(','))
+    }
+  }
+  return lines.join('\n')
+}
+
+function exportCsv(scope = 'all') {
+  const tempCount = st.temperatureSeries.reduce((s, x) => s + x.points.length, 0)
+  const humCount = st.humiditySeries.reduce((s, x) => s + x.points.length, 0)
+  const total = (scope === 'humidity' ? humCount : 0) +
+                (scope === 'temperature' ? tempCount : 0) +
+                (scope === 'all' ? tempCount + humCount : 0)
+  if (!total) {
+    toast.error('Нет данных для экспорта')
+    return
+  }
+
+  const csv = buildCsv(scope)
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const suffix = scope === 'all' ? 'charts' : scope
+  downloadCsv(`pvz_${suffix}_${stamp}.csv`, csv)
+}
+
 function buildMetricPoints(rows, metricName) {
   const points = []
 
