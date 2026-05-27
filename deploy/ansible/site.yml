@@ -1,0 +1,9 @@
+﻿---
+- name: Setup Mosquitto brokers
+  hosts: mqtt
+  become: true
+  vars:
+    mqtt_backend_user: "pvz-backend"
+    mqtt_backend_password: "{{ lookup('env', 'MQTT_PASSWORD') }}"
+  roles:
+    - mosquitto

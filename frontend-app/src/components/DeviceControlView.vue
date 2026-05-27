@@ -84,6 +84,29 @@
             {{ pendingCommand === 'fetch' ? 'Запрашиваем...' : 'Запросить свежие данные' }}
           </button>
         </div>
+
+        <div class="interval-row">
+          <label class="info-label" for="intervalInput">Интервал опроса датчиков (сек)</label>
+          <div class="interval-input-row">
+            <input
+              id="intervalInput"
+              v-model.number="intervalSeconds"
+              type="number"
+              min="1"
+              step="1"
+              class="interval-input"
+              placeholder="Например: 60"
+            />
+            <button
+              class="btn primary"
+              type="button"
+              :disabled="pendingCommand === 'set_interval' || !intervalSeconds || intervalSeconds <= 0"
+              @click="sendSetInterval"
+            >
+              {{ pendingCommand === 'set_interval' ? 'Отправляем...' : 'Применить интервал' }}
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -113,6 +136,7 @@ const device = ref(null)
 const loading = ref(false)
 const error = ref('')
 const pendingCommand = ref('')
+const intervalSeconds = ref(60)
 
 const deviceId = computed(() => String(route.params.deviceId || ''))
 const tenantId = computed(() => String(route.query.tenant_id || ''))
@@ -254,6 +278,26 @@ async function sendCommand(type) {
   }
 }
 
+async function sendSetInterval() {
+  if (!device.value || !intervalSeconds.value || intervalSeconds.value <= 0) return
+  pendingCommand.value = 'set_interval'
+  try {
+    const query = device.value.tenant_id
+      ? `?tenant_id=${encodeURIComponent(device.value.tenant_id)}`
+      : ''
+    await api.post(`/devices/${encodeURIComponent(device.value.device_id)}/command${query}`, {
+      type: 'set_interval',
+      params: { interval: intervalSeconds.value },
+      retain: false,
+    })
+    toast.success(`Интервал ${intervalSeconds.value} сек отправлен`)
+  } catch (e) {
+    toast.error(e?.body?.detail || e?.message || 'Не удалось отправить set_interval')
+  } finally {
+    pendingCommand.value = ''
+  }
+}
+
 onMounted(loadDevice)
 </script>
 
@@ -343,5 +387,31 @@ onMounted(loadDevice)
     grid-template-columns: 1fr;
   }
 }
-</style>
+
+.interval-row {
+  margin-top: 18px;
+}
+
+.interval-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.interval-input {
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  font-size: 15px;
+  width: 140px;
+  outline: none;
+  background: #f8fbff;
+  transition: border-color 0.2s;
+}
+
+.interval-input:focus {
+  border-color: var(--color-primary, #3b82f6);
+}</style>
 

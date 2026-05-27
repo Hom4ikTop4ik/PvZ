@@ -1,0 +1,36 @@
+﻿---
+- name: Install Mosquitto
+  apt:
+    name: [mosquitto, mosquitto-clients]
+    state: present
+    update_cache: true
+
+- name: Deploy Mosquitto config
+  template:
+    src: pvz.conf.j2
+    dest: /etc/mosquitto/conf.d/pvz.conf
+  notify: Restart mosquitto
+
+- name: Create backend MQTT user
+  command: >
+    mosquitto_passwd -b /etc/mosquitto/passwd
+    {{ mqtt_backend_user }} {{ mqtt_backend_password }}
+  no_log: true
+
+- name: Open firewall ports
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: ["22", "1883", "8883"]
+
+- name: Enable ufw
+  ufw:
+    state: enabled
+    policy: deny
+
+- name: Enable and start Mosquitto
+  systemd:
+    name: mosquitto
+    state: started
+    enabled: true

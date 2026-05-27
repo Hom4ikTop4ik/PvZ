@@ -51,11 +51,9 @@ async def _handle_humidity(line: str, conn: asyncpg.Connection, *, external_id: 
     parts = line.split(",")
     if len(parts) < 3:
         raise ValueError(f"bad humidity payload: {line!r}")
-
     d, ts, h = parts[0], parts[1], parts[2]
     if d != external_id:
         return
-
     seq = int(parts[3]) if len(parts) > 3 and parts[3] else None
     await telrepo.insert_humidity(conn, device_id=device_uuid, ts=_iso(ts), humidity=float(h), seq=seq)
 
@@ -64,11 +62,9 @@ async def _handle_temperature(line: str, conn: asyncpg.Connection, *, external_i
     parts = line.split(",")
     if len(parts) < 3:
         raise ValueError(f"bad temperature payload: {line!r}")
-
     d, ts, t = parts[0], parts[1], parts[2]
     if d != external_id:
         return
-
     seq = int(parts[3]) if len(parts) > 3 and parts[3] else None
     await telrepo.insert_temperature(conn, device_id=device_uuid, ts=_iso(ts), temperature=float(t), seq=seq)
 
@@ -77,11 +73,9 @@ async def _handle_location(line: str, conn: asyncpg.Connection, *, external_id: 
     parts = line.split(",")
     if len(parts) < 4:
         raise ValueError(f"bad location payload: {line!r}")
-
     d, ts, lat, lon = parts[0], parts[1], parts[2], parts[3]
     if d != external_id:
         return
-
     await devrepo.upsert_location(conn, device_id=device_uuid, lat=float(lat), lon=float(lon), ts=_iso(ts))
 
 
@@ -89,11 +83,9 @@ async def _handle_state(line: str, conn: asyncpg.Connection, *, external_id: str
     parts = line.split(",")
     if len(parts) < 6:
         raise ValueError(f"bad state payload: {line!r}")
-
     d, ts, rssi, snr, bat, online = parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
     if d != external_id:
         return
-
     await devrepo.upsert_state(
         conn,
         device_id=device_uuid,
@@ -121,12 +113,31 @@ def _format_params(params) -> str:
     if isinstance(params, str):
         return params
     if isinstance(params, dict):
-        values = params.values()
+        values = list(params.values())
     elif isinstance(params, (list, tuple)):
-        values = params
+        values = list(params)
     else:
         return str(params)
     return ",".join("" if v is None else str(v) for v in values)
+
+
+def _validate_interval_params(params) -> int:
+    raw = None
+    if isinstance(params, dict):
+        raw = params.get("interval") or params.get("value")
+        if raw is None and params:
+            raw = list(params.values())[0]
+    elif isinstance(params, (list, tuple)):
+        raw = params[0] if params else None
+    elif isinstance(params, (int, float, str)):
+        raw = params
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"set_interval requires a numeric interval, got: {params!r}")
+    if value <= 0:
+        raise ValueError(f"Interval must be positive, got {value}")
+    return value
 
 
 async def publish_command(
@@ -137,11 +148,16 @@ async def publish_command(
     params: dict | list | str | None = None,
     retain: bool = False,
 ) -> str:
+    if type_ == "interval":
+        interval_val = _validate_interval_params(params)
+        params = {"interval": interval_val}
+
     pool = None
     try:
         pool = await get_pool()
     except Exception:
-        logger.exception("DB is not available at MQTT startup; will retry later")
+        logger.exception("DB is not available; will retry later")
+
     async with pool.acquire() as conn:
         tenant_name = await conn.fetchval(
             "SELECT tenant_name FROM iot.tenant WHERE tenant_id::text = $1 OR tenant_name = $1",
@@ -154,11 +170,15 @@ async def publish_command(
             raise ValueError("Device does not belong to tenant")
         await _set_rls(conn, tenant_name)
 
+        node_id = await devrepo.get_node_id(conn, device_id)
+        if not node_id:
+            raise ValueError(f"Device NODE_ID not found for device_id={device_id}")
+
         cmd_id = str(uuid.uuid4())
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         params_str = _format_params(params)
         payload = f"{cmd_id},{ts},{type_}" + (f",{params_str}" if params_str else "")
-        topic = f"{settings.app_env}/{tenant_name}/devices/{device_id}/command"
+        topic = f"{settings.app_env}/{tenant_name}/devices/{node_id}/command"
 
         if isinstance(params, dict):
             db_params = params
@@ -177,7 +197,10 @@ async def publish_command(
             params=db_params,
             retain=retain,
         )
-        logger.info("Created command %s for device %s tenant %s", cmd_id, device_id, tenant_name)
+        logger.info(
+            "Created command %s (type=%s) device=%s node_id=%s tenant=%s",
+            cmd_id, type_, device_id, node_id, tenant_name,
+        )
 
     async with Client(
         settings.mqtt_host,
@@ -186,7 +209,7 @@ async def publish_command(
         password=settings.mqtt_password or None,
         keepalive=30,
     ) as client:
-        logger.info("Publishing command %s to topic %s", cmd_id, topic)
+        logger.info("Publishing command %s to topic %s payload=%r", cmd_id, topic, payload)
         await client.publish(topic, payload.encode("utf-8"), qos=1, retain=retain)
 
     async with pool.acquire() as conn:
@@ -204,7 +227,6 @@ async def run_mqtt_forever():
                 "Connecting to MQTT broker at %s:%d (env=%s)",
                 settings.mqtt_host, settings.mqtt_port, settings.app_env
             )
-
             client_id = f"pvz-backend-{uuid.uuid4().hex[:8]}"
             async with Client(
                 settings.mqtt_host,
@@ -215,8 +237,6 @@ async def run_mqtt_forever():
                 client_id=client_id,
             ) as client:
                 logger.info("Connected to MQTT broker client_id=%s", client_id)
-
-
                 try:
                     async with client.messages() as messages:
                         async with asyncio.timeout(10):
@@ -226,8 +246,6 @@ async def run_mqtt_forever():
                             await client.subscribe(TOPIC_STATE, qos=1)
                             await client.subscribe(TOPIC_ACK, qos=1)
                         logger.info("Subscribed to topics")
-                        logger.info("MQTT runtime started, listening for messages...")
-
                         msg_iter = messages.__aiter__()
                         while True:
                             try:
@@ -236,27 +254,19 @@ async def run_mqtt_forever():
                                 logger.debug("No MQTT messages for 60s (still connected)")
                                 continue
                             except StopAsyncIteration:
-                                logger.info("MQTT messages stream ended (connection closed). Reconnecting...")
+                                logger.info("MQTT messages stream ended. Reconnecting...")
                                 break
-
                             try:
                                 topic_str = str(msg.topic)
                                 payload = msg.payload.decode("utf-8", errors="ignore")
-                                logger.info("RAW MQTT: topic=%s payload=%r retain=%s qos=%s", topic_str, payload[:200], getattr(msg, "retain", None), getattr(msg, "qos", None))
+                                logger.info("RAW MQTT: topic=%s payload=%r", topic_str, payload[:200])
                                 meta = _split_topic(topic_str)
                                 if not meta:
-                                    logger.info("SKIP: topic has insufficient parts: %s", topic_str)
                                     continue
-
                                 env, tenant_name, kind, device_id, leaf = meta
-
                                 if env != settings.app_env:
-                                    logger.info("SKIP: env mismatch env=%s app_env=%s topic=%s", env, settings.app_env, topic_str)
                                     continue
-                                logger.info("RAW OK, going to parse+store")
-
                                 async with pool.acquire() as conn:
-                                    logger.info("Processing MQTT message for tenant=%s device=%s leaf=%s", tenant_name, device_id, leaf)
                                     resolved = await devrepo.resolve_device_uuid(conn, device_id)
                                     if not resolved:
                                         resolved = await devrepo.get_or_create_by_external_id(
@@ -266,27 +276,15 @@ async def run_mqtt_forever():
                                             model="auto",
                                         )
                                         if resolved:
-                                            logger.info("Auto-provisioned device external_id=%s for tenant=%s -> %s", device_id, tenant_name, resolved)
+                                            logger.info("Auto-provisioned device external_id=%s tenant=%s -> %s", device_id, tenant_name, resolved)
                                         else:
                                             logger.info("Cannot provision device=%s: tenant=%s not found?", device_id, tenant_name)
                                             continue
-
-                                    logger.info("Resolved device identifier %s to UUID %s", device_id, resolved)
-
+                                    logger.info("Resolved %s -> UUID %s", device_id, resolved)
                                     belongs = await _device_belongs(conn, resolved, tenant_name)
                                     if not belongs:
-                                        logger.info(
-                                            "Skipping message: device %s does not belong to tenant %s",
-                                            resolved, tenant_name
-                                        )
+                                        logger.info("Skipping: device %s not in tenant %s", resolved, tenant_name)
                                         continue
-                                    
-                                    logger.info("Device %s belongs to tenant %s", resolved, tenant_name)
-
-                                    # await _set_rls(conn, tenant_name)
-                                    
-                                    logger.info("Set RLS for tenant %s", tenant_name)
-
                                     if leaf == "humidity":
                                         await _handle_humidity(payload, conn, external_id=device_id, device_uuid=resolved)
                                     elif leaf == "temperature":
@@ -299,9 +297,7 @@ async def run_mqtt_forever():
                                         await _handle_ack(payload, conn)
                                     else:
                                         logger.info("Unknown leaf %s, ignoring", leaf)
-                                    logger.info("Stored message: device=%s leaf=%s tenant=%s", resolved, leaf, tenant_name)
-
-
+                                    logger.info("Stored: device=%s leaf=%s tenant=%s", resolved, leaf, tenant_name)
                             except Exception:
                                 logger.exception("Error processing MQTT message")
                 except MqttError as e:
@@ -312,15 +308,12 @@ async def run_mqtt_forever():
                     logger.exception("MQTT unexpected crash")
                     await asyncio.sleep(2)
                     continue
-
         except TimeoutError:
-            logger.exception("Timeout while connecting/subscribing to MQTT, retrying in 2s")
+            logger.exception("Timeout connecting/subscribing, retrying in 2s")
             await asyncio.sleep(2)
-
         except MqttError:
-            logger.exception("MQTT connection/protocol error, retrying in 2s")
+            logger.exception("MQTT connection error, retrying in 2s")
             await asyncio.sleep(2)
-
         except Exception:
-            logger.exception("MQTT runtime crashed unexpectedly, retrying in 2s")
+            logger.exception("MQTT runtime crashed, retrying in 2s")
             await asyncio.sleep(2)

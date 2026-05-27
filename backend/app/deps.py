@@ -5,7 +5,9 @@ import asyncpg
 from .db import get_pool
 from .services.config import settings
 import re
+import logging
 
+logger = logging.getLogger(__name__)
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -24,7 +26,13 @@ async def db_conn() -> asyncpg.Connection:
         yield conn
 
 
-async def tenant_guard(user=Depends(current_user), tenant_id: str | None = Query(None, alias='tenant_id'), conn: asyncpg.Connection = Depends(db_conn)) -> str:
+async def tenant_guard(
+    user=Depends(current_user),
+    tenant_id: str | None = Query(None, alias='tenant_id'),
+    conn: asyncpg.Connection = Depends(db_conn),
+) -> str:
+    username = user.get('name')
+
     if tenant_id:
         if not re.fullmatch(r"[0-9a-fA-F\-]{32,36}", tenant_id):
             raise HTTPException(status_code=403, detail="Invalid tenant id")
@@ -37,21 +45,44 @@ async def tenant_guard(user=Depends(current_user), tenant_id: str | None = Query
             return tenant_id
 
         try:
-            row = await conn.fetchrow("SELECT tenant_owner FROM iot.tenant WHERE tenant_id = $1", tenant_id)
+            row = await conn.fetchrow(
+                """
+                SELECT t.tenant_owner,
+                       (SELECT u.tenant_id::text FROM iot.users u WHERE u.name = $2) AS user_tenant_id
+                FROM iot.tenant t
+                WHERE t.tenant_id::text = $1
+                """,
+                tenant_id, username,
+            )
         except Exception:
+            logger.exception("tenant_guard: DB lookup failed for tenant_id=%s", tenant_id)
             raise HTTPException(status_code=403, detail="Tenant lookup failed")
 
         if not row:
             raise HTTPException(status_code=403, detail="Tenant not found")
 
-        tenant_owner = row.get('tenant_owner')
-        if tenant_owner and tenant_owner == user.get('name'):
+        if row['tenant_owner'] and row['tenant_owner'] == username:
+            return tenant_id
+
+        if row['user_tenant_id'] and row['user_tenant_id'] == tenant_id:
             return tenant_id
 
         raise HTTPException(status_code=403, detail="Not allowed for tenant")
 
-    tid = user.get("tenant_id")
-    if isinstance(tid, str) and re.fullmatch(r"[0-9a-fA-F\-]{32,36}", tid):
-        return tid
-    raise HTTPException(status_code=403, detail="Tenant not found or not set in token")
+    token_tid = user.get("tenant_id")
+    if isinstance(token_tid, str) and re.fullmatch(r"[0-9a-fA-F\-]{32,36}", token_tid):
+        return token_tid
 
+    try:
+        db_tid = await conn.fetchval(
+            "SELECT tenant_id::text FROM iot.users WHERE name = $1",
+            username,
+        )
+    except Exception:
+        logger.exception("tenant_guard: failed to look up user tenant for %s", username)
+        db_tid = None
+
+    if db_tid and re.fullmatch(r"[0-9a-fA-F\-]{32,36}", db_tid):
+        return db_tid
+
+    raise HTTPException(status_code=403, detail="Tenant not found or not set in token")
