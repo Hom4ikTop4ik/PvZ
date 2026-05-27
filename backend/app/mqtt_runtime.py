@@ -113,12 +113,14 @@ def _format_params(params) -> str:
     if isinstance(params, str):
         return params
     if isinstance(params, dict):
-        values = list(params.values())
+        values = params.values()
     elif isinstance(params, (list, tuple)):
-        values = list(params)
+        values = params
     else:
         return str(params)
     return ",".join("" if v is None else str(v) for v in values)
+
+
 
 
 def _validate_interval_params(params) -> int:
@@ -127,6 +129,8 @@ def _validate_interval_params(params) -> int:
         raw = params.get("interval") or params.get("value")
         if raw is None and params:
             raw = list(params.values())[0]
+    elif isinstance(params, list):
+        raw = params[1]
     elif isinstance(params, (list, tuple)):
         raw = params[0] if params else None
     elif isinstance(params, (int, float, str)):
