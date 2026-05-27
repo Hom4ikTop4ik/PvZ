@@ -85,30 +85,6 @@
           </button>
         </div>
 
-        <div class="interval-row">
-          <label class="info-label" for="intervalInput">Интервал опроса датчиков (сек)</label>
-          <div class="interval-input-row">
-            <input
-              id="intervalInput"
-              v-model.number="intervalSeconds"
-              type="number"
-              min="1"
-              step="1"
-              class="interval-input"
-              placeholder="Например: 60"
-            />
-            <button
-              class="btn primary"
-              type="button"
-              :disabled="pendingCommand === 'set_interval' || !intervalSeconds || intervalSeconds <= 0"
-              @click="sendSetInterval"
-            >
-              {{ pendingCommand === 'set_interval' ? 'Отправляем...' : 'Применить интервал' }}
-            </button>
-          </div>
-        </div>
-      </div>
-
       <div class="card p-24">
         <h3 class="section-title">Политика обновления данных</h3>
         <div class="helper settings-subtitle">
