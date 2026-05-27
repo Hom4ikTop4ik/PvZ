@@ -34,7 +34,7 @@ async def send_command(device_id: str, payload: CommandIn, tenant_id: str = Depe
             retain=payload.retain,
         )
     except ValueError as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     return {"command_id": cmd_id}
 
 

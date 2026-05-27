@@ -44,6 +44,13 @@ async def is_belongs_to_tenant(conn: asyncpg.Connection, device_id: str, tenant_
     )
 
 
+async def get_node_id(conn: asyncpg.Connection, device_id: str) -> str | None:
+    return await conn.fetchval(
+        "SELECT external_id FROM iot.devices WHERE device_id::text = $1 LIMIT 1",
+        device_id,
+    )
+
+
 async def resolve_device_uuid(
     conn: asyncpg.Connection,
     external_id: str,

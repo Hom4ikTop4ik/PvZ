@@ -57,6 +57,7 @@ class FakeDevice:
         client: mqtt.Client,
         humidity_base: float = 45.0,
         temperature_base: float = 22.0,
+        periods: dict | None = None,
     ) -> None:
         self.id = device_id
         self.client = client
@@ -68,6 +69,7 @@ class FakeDevice:
         self.seq = 0
         self.humidity = humidity_base + random.uniform(-3, 3)
         self.temperature = temperature_base + random.uniform(-2, 2)
+        self.periods = dict(periods or {"hum": 1.0, "tmp": 1.0, "stt": 5.0, "geo": 10.0})
         self.rssi = -60 + random.randint(-15, 5)
         self.snr = 7.5 + random.uniform(-3, 3)
         self.battery = random.uniform(40.0, 100.0)
@@ -145,6 +147,18 @@ class FakeDevice:
                             self.publish_state(retain=True)
                         elif target == "geo":
                             self.publish_location(retain=True)
+                elif cmd_type == "INTERVAL":
+                    try:
+                        metric = cmd_params[0].strip().lower() if cmd_params else ""
+                        seconds = float(cmd_params[1]) if len(cmd_params) > 1 else 0
+                        if metric in self.periods and seconds > 0:
+                            self.periods[metric] = seconds
+                        else:
+                            status = "error"
+                            details = f"bad interval params: {cmd_params}"
+                    except (ValueError, IndexError) as exc:
+                        status = "error"
+                        details = f"bad interval params: {exc}"
 
                 ack_payload = f"{command_id},{now_iso()},{status},{details}"
                 self.client.publish(self.topic_ack, payload=ack_payload, qos=1, retain=False)
@@ -207,6 +221,12 @@ def run_faker() -> None:
             client=client,
             humidity_base=random.uniform(40, 60),
             temperature_base=random.uniform(18, 26),
+            periods={
+                "hum": humidity_period,
+                "tmp": temperature_period,
+                "stt": state_period,
+                "geo": loc_period,
+            },
         )
         devices_per_client[client].append(dev)
 
@@ -252,19 +272,19 @@ def run_faker() -> None:
             for i, d in enumerate(all_devices):
                 if now >= next_h[i] and d.online == "online":
                     d.publish_humidity(retain=False)
-                    next_h[i] = now + humidity_period
+                    next_h[i] = now + d.periods["hum"]
 
                 if now >= next_t[i] and d.online == "online":
                     d.publish_temperature(retain=False)
-                    next_t[i] = now + temperature_period
+                    next_t[i] = now + d.periods["tmp"]
 
                 if now >= next_state[i]:
                     d.publish_state(retain=True)
-                    next_state[i] = now + state_period
+                    next_state[i] = now + d.periods["stt"]
 
                 if now >= next_loc[i]:
                     d.publish_location(retain=True)
-                    next_loc[i] = now + loc_period
+                    next_loc[i] = now + d.periods["geo"]
 
             time.sleep(0.01)
     except KeyboardInterrupt:

@@ -123,25 +123,33 @@ def _format_params(params) -> str:
 
 
 
-def _validate_interval_params(params) -> int:
-    raw = None
+_INTERVAL_METRICS = {"hum", "tmp", "stt", "geo"}
+
+
+def _validate_interval_params(params) -> tuple[str, int]:
+    metric = None
+    seconds = None
+
     if isinstance(params, dict):
-        raw = params.get("interval") or params.get("value")
-        if raw is None and params:
-            raw = list(params.values())[0]
-    elif isinstance(params, list):
-        raw = params[1]
-    elif isinstance(params, (list, tuple)):
-        raw = params[0] if params else None
-    elif isinstance(params, (int, float, str)):
-        raw = params
+        metric = params.get("metric") or params.get("type") or params.get("kind")
+        seconds = params.get("seconds") or params.get("interval") or params.get("value")
+    elif isinstance(params, (list, tuple)) and len(params) >= 2:
+        metric, seconds = params[0], params[1]
+    elif isinstance(params, str) and "," in params:
+        m, s = params.split(",", 1)
+        metric, seconds = m.strip(), s.strip()
+
+    if metric not in _INTERVAL_METRICS:
+        raise ValueError(
+            f"interval requires metric in {sorted(_INTERVAL_METRICS)}, got: {metric!r}"
+        )
     try:
-        value = int(raw)
+        seconds_int = int(seconds)
     except (TypeError, ValueError):
-        raise ValueError(f"set_interval requires a numeric interval, got: {params!r}")
-    if value <= 0:
-        raise ValueError(f"Interval must be positive, got {value}")
-    return value
+        raise ValueError(f"interval requires numeric seconds, got: {seconds!r}")
+    if seconds_int <= 0:
+        raise ValueError(f"interval seconds must be positive, got {seconds_int}")
+    return metric, seconds_int
 
 
 async def publish_command(
@@ -153,8 +161,8 @@ async def publish_command(
     retain: bool = False,
 ) -> str:
     if type_ == "interval":
-        interval_val = _validate_interval_params(params)
-        params = {"interval": interval_val}
+        metric, seconds = _validate_interval_params(params)
+        params = [metric, seconds]
 
     pool = None
     try:
