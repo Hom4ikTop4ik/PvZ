@@ -22,12 +22,16 @@ from utils import RingBuffer, LoRaTxQueue, lora_tx_pump
 led = machine.Pin(config_ga.PIN_LED, machine.Pin.OUT, value=1)  # выключен
 button = machine.Pin(config_ga.PIN_BUTTON, machine.Pin.IN, machine.Pin.PULL_UP)
 
-settings = gateway_settings.load_settings(config_ga.TENANT)
-current_tenant = gateway_settings.apply_settings(config_ga, settings)
-print("[CONFIG] Tenant:", current_tenant)
+settings = gateway_settings.load_settings(config_ga.TENANT, config_ga.WIFI_SSID, config_ga.WIFI_PASS)
+active_settings = gateway_settings.apply_settings(config_ga, settings)
+print("[CONFIG] Tenant:", active_settings["tenant"])
+print("[CONFIG] Wi-Fi SSID:", active_settings["wifi_ssid"])
 
 
-def config_portal_requested(window_ms=5000, hold_ms=900):
+def config_portal_requested(
+    window_ms=config_ga.CONFIG_PORTAL_BOOT_WINDOW_MS,
+    hold_ms=config_ga.CONFIG_PORTAL_BOOT_HOLD_MS,
+):
     print("[CONFIG] Hold BOOT now to open config portal...")
     start = time.ticks_ms()
     held_since = None
@@ -49,8 +53,12 @@ def config_portal_requested(window_ms=5000, hold_ms=900):
     return False
 
 
+if not gateway_settings.wifi_is_configured(active_settings):
+    print("[CONFIG] Wi-Fi is not configured; opening config portal")
+    gateway_config_portal.run_config_portal(active_settings)
+
 if config_portal_requested():
-    gateway_config_portal.run_config_portal(current_tenant)
+    gateway_config_portal.run_config_portal(active_settings)
 
 # Глобальный клиент
 mqtt_client = None
@@ -94,20 +102,40 @@ def get_iso_timestamp():
     )
 
 # --- 2. Работа с Wi-Fi ---
-def connect_wifi():
+def connect_wifi(max_wait_s=30):
     wlan = network.WLAN(network.STA_IF)
     wlan.active(False)
     time.sleep(1)
     wlan.active(True)
     time.sleep(1)
     
+    if config_ga.WIFI_SSID == gateway_settings.NO_WIFI_SSID:
+        print("[WIFI] SSID is not configured")
+        return False
+
     if not wlan.isconnected():
-        print(f"[WIFI] Connecting to '{config_ga.WIFI_SSID}' '{config_ga.WIFI_PASS}'...")
+        print(f"[WIFI] Connecting to '{config_ga.WIFI_SSID}'...")
         wlan.connect(config_ga.WIFI_SSID, config_ga.WIFI_PASS)
 
-        while not wlan.isconnected():
-            machine.idle()
-            
+        status_codes = {
+            4: "STAT_DISCONNECTED",
+            5: "STAT_CONNECT_FAIL",
+            201: "STAT_NO_AP_FOUND",
+            202: "STAT_WRONG_PASSWORD",
+            203: "STAT_ASSOC_FAIL",
+            204: "STAT_HANDSHAKE_TIMEOUT",
+            1001: "STAT_IDLE",
+            1002: "STAT_CONNECTING",
+            1010: "STAT_GOT_IP",
+        }
+
+        for _ in range(max_wait_s):
+            status = wlan.status()
+            print("[WIFI]", status_codes.get(status, status))
+            if wlan.isconnected():
+                break
+            time.sleep(1)
+
     if wlan.isconnected():
         print(f"[WIFI] Connected! IP: {wlan.ifconfig()[0]}")
         return True
@@ -405,8 +433,9 @@ def main():
 if __name__ == "__main__":
     led.value(0)
 
-    while not connect_wifi():
-        pass
+    if not connect_wifi():
+        print("[WIFI] Connection failed; opening config portal")
+        gateway_config_portal.run_config_portal(active_settings)
 
     for i in range(3):
         try:

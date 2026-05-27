@@ -63,7 +63,20 @@ def _split_path_query(path):
     return route, _parse_form(query)
 
 
-def _html_page(current_tenant, message=""):
+def _html_escape(value):
+    value = str(value)
+    value = value.replace("&", "&amp;")
+    value = value.replace("<", "&lt;")
+    value = value.replace(">", "&gt;")
+    value = value.replace('"', "&quot;")
+    return value
+
+
+def _html_page(settings, message=""):
+    pass_hint = "leave blank to keep current"
+    if not gateway_settings.wifi_is_configured(settings):
+        pass_hint = "router password"
+
     return """<!doctype html>
 <html>
 <head>
@@ -77,16 +90,27 @@ def _html_page(current_tenant, message=""):
 <form method="POST" action="/save">
 <p>Tenant:</p>
 <input name="tenant" value="{tenant}" maxlength="48">
+<p>Wi-Fi SSID:</p>
+<input name="wifi_ssid" value="{wifi_ssid}" maxlength="32">
+<p>Wi-Fi password:</p>
+<input type="password" name="wifi_pass" placeholder="{pass_hint}" maxlength="64">
 <p><button type="submit">Save</button></p>
 </form>
 <form method="POST" action="/reboot">
 <p><button type="submit">Reboot gateway</button></p>
 </form>
-<p>Allowed: A-Z a-z 0-9 _ - .</p>
+<p>Tenant allowed: A-Z a-z 0-9 _ - .</p>
+<p>Saved Wi-Fi: {wifi_state}</p>
 <p><a href="/status">Status</a> | <a href="/ping">Ping</a></p>
 </body>
 </html>
-""".format(tenant=current_tenant, message=message)
+""".format(
+        tenant=_html_escape(settings.get("tenant", "")),
+        wifi_ssid=_html_escape(settings.get("wifi_ssid", "")),
+        wifi_state="configured" if gateway_settings.wifi_is_configured(settings) else "not configured",
+        pass_hint=_html_escape(pass_hint),
+        message=_html_escape(message),
+    )
 
 
 def _write_all(conn, data):
@@ -224,10 +248,33 @@ def _start_ap():
     return ap
 
 
-def run_config_portal(current_tenant):
+def _initial_settings(value):
+    if isinstance(value, dict):
+        return value
+    return gateway_settings.load_settings(value, config_ga.WIFI_SSID, config_ga.WIFI_PASS)
+
+
+def _save_form_settings(form, settings):
+    wifi_pass = form.get("wifi_pass", "")
+    if wifi_pass == "" and gateway_settings.wifi_is_configured(settings):
+        wifi_pass = settings.get("wifi_pass", config_ga.WIFI_PASS)
+
+    saved = gateway_settings.save_settings(
+        form.get("tenant", settings.get("tenant", config_ga.TENANT)),
+        form.get("wifi_ssid", settings.get("wifi_ssid", config_ga.WIFI_SSID)),
+        wifi_pass,
+        config_ga.TENANT,
+        config_ga.WIFI_SSID,
+        config_ga.WIFI_PASS,
+    )
+    gateway_settings.apply_settings(config_ga, saved)
+    return saved
+
+
+def run_config_portal(initial_settings):
     ap = _start_ap()
     ap_ip = ap.ifconfig()[0]
-    tenant = current_tenant
+    settings = _initial_settings(initial_settings)
     print("[CONFIG] AP started:", AP_SSID, ap.ifconfig())
     print("[CONFIG] AP is open, no password")
     print("[CONFIG] Open http://{}/".format(ap_ip))
@@ -260,17 +307,35 @@ def run_config_portal(current_tenant):
             elif route.startswith("/ping"):
                 _send_response(conn, "200 OK", "OK\n", "text/plain")
             elif route.startswith("/status"):
-                text = "tenant={}\nip={}\n".format(tenant, ap_ip)
+                text = "tenant={}\nwifi_ssid={}\nwifi_configured={}\nip={}\n".format(
+                    settings.get("tenant", ""),
+                    settings.get("wifi_ssid", ""),
+                    gateway_settings.wifi_is_configured(settings),
+                    ap_ip,
+                )
                 _send_response(conn, "200 OK", text, "text/plain")
             elif method == "GET" and route.startswith("/set"):
-                tenant = gateway_settings.save_tenant(query.get("tenant", ""), config_ga.TENANT)
-                _send_response(conn, "200 OK", "saved tenant={}\n".format(tenant), "text/plain")
-                print("[CONFIG] Tenant saved:", tenant)
+                form = {
+                    "tenant": query.get("tenant", settings.get("tenant", config_ga.TENANT)),
+                    "wifi_ssid": query.get("wifi_ssid", settings.get("wifi_ssid", config_ga.WIFI_SSID)),
+                    "wifi_pass": query.get("wifi_pass", ""),
+                }
+                settings = _save_form_settings(form, settings)
+                _send_response(
+                    conn,
+                    "200 OK",
+                    "saved tenant={}\nwifi_ssid={}\n".format(
+                        settings.get("tenant", ""),
+                        settings.get("wifi_ssid", ""),
+                    ),
+                    "text/plain",
+                )
+                print("[CONFIG] Settings saved")
             elif method == "POST" and route.startswith("/save"):
                 form = _parse_form(body)
-                tenant = gateway_settings.save_tenant(form.get("tenant", ""), config_ga.TENANT)
-                _send_response(conn, "200 OK", _html_page(tenant, "Saved. Reboot when ready."))
-                print("[CONFIG] Tenant saved:", tenant)
+                settings = _save_form_settings(form, settings)
+                _send_response(conn, "200 OK", _html_page(settings, "Saved. Reboot when ready."))
+                print("[CONFIG] Settings saved")
             elif method == "POST" and route.startswith("/reboot"):
                 _send_response(conn, "200 OK", "Rebooting gateway...\n", "text/plain")
                 time.sleep_ms(500)
@@ -278,7 +343,7 @@ def run_config_portal(current_tenant):
                 time.sleep(1)
                 machine.reset()
             else:
-                _send_response(conn, "200 OK", _html_page(tenant))
+                _send_response(conn, "200 OK", _html_page(settings))
 
             time.sleep_ms(500)
         except Exception as e:
