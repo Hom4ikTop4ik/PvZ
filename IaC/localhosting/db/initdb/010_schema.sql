@@ -116,12 +116,30 @@ CREATE INDEX IF NOT EXISTS location_geom_idx
   ON iot.location USING GIST(location);
 
 CREATE TABLE IF NOT EXISTS iot.monitoring_raw (
-  device_id uuid NOT NULL REFERENCES iot.devices(device_id) ON DELETE CASCADE,
-  humidity  double precision NOT NULL,
-  seq       bigint,
-  sent_ts   timestamptz NOT NULL,
+  device_id   uuid NOT NULL REFERENCES iot.devices(device_id) ON DELETE CASCADE,
+  humidity    double precision,
+  temperature double precision,
+  seq         bigint,
+  sent_ts     timestamptz NOT NULL,
   PRIMARY KEY (device_id, sent_ts)
 );
+
+ALTER TABLE iot.monitoring_raw
+  ADD COLUMN IF NOT EXISTS temperature double precision;
+
+ALTER TABLE iot.monitoring_raw
+  ALTER COLUMN humidity DROP NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'monitoring_raw_any_metric_ck'
+  ) THEN
+    ALTER TABLE iot.monitoring_raw
+      ADD CONSTRAINT monitoring_raw_any_metric_ck
+      CHECK (humidity IS NOT NULL OR temperature IS NOT NULL);
+  END IF;
+END$$;
 
 SELECT create_hypertable('iot.monitoring_raw', 'sent_ts', if_not_exists => TRUE);
 
@@ -136,7 +154,8 @@ CREATE VIEW iot.monitoring_nm AS
 SELECT
   device_id,
   time_bucket('5 minutes', sent_ts) AS bucket,
-  avg(humidity) AS humidity_avg
+  avg(humidity)    AS humidity_avg,
+  avg(temperature) AS temperature_avg
 FROM iot.monitoring_raw
 GROUP BY device_id, bucket;
 

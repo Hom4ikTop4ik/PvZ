@@ -13,6 +13,7 @@ from .repositories import telemetry as telrepo
 from .repositories import commands as cmdrepo
 
 TOPIC_HUM = "+/+/sensors/+/humidity"
+TOPIC_TMP = "+/+/sensors/+/temperature"
 TOPIC_LOC = "+/+/sensors/+/location"
 TOPIC_STATE = "+/+/sensors/+/state"
 TOPIC_ACK = "+/+/devices/+/ack"
@@ -59,6 +60,19 @@ async def _handle_humidity(line: str, conn: asyncpg.Connection, *, external_id: 
     await telrepo.insert_humidity(conn, device_id=device_uuid, ts=_iso(ts), humidity=float(h), seq=seq)
 
 
+async def _handle_temperature(line: str, conn: asyncpg.Connection, *, external_id: str, device_uuid: str):
+    parts = line.split(",")
+    if len(parts) < 3:
+        raise ValueError(f"bad temperature payload: {line!r}")
+
+    d, ts, t = parts[0], parts[1], parts[2]
+    if d != external_id:
+        return
+
+    seq = int(parts[3]) if len(parts) > 3 and parts[3] else None
+    await telrepo.insert_temperature(conn, device_id=device_uuid, ts=_iso(ts), temperature=float(t), seq=seq)
+
+
 async def _handle_location(line: str, conn: asyncpg.Connection, *, external_id: str, device_uuid: str):
     parts = line.split(",")
     if len(parts) < 4:
@@ -101,12 +115,26 @@ async def _handle_ack(line: str, conn: asyncpg.Connection):
     await cmdrepo.ack_command(conn, cmd_id=cmd_id, status=status, error=details)
 
 
+def _format_params(params) -> str:
+    if params is None:
+        return ""
+    if isinstance(params, str):
+        return params
+    if isinstance(params, dict):
+        values = params.values()
+    elif isinstance(params, (list, tuple)):
+        values = params
+    else:
+        return str(params)
+    return ",".join("" if v is None else str(v) for v in values)
+
+
 async def publish_command(
     *,
     tenant_id: str,
     device_id: str,
     type_: str,
-    params: dict | None = None,
+    params: dict | list | str | None = None,
     retain: bool = False,
 ) -> str:
     pool = None
@@ -115,24 +143,41 @@ async def publish_command(
     except Exception:
         logger.exception("DB is not available at MQTT startup; will retry later")
     async with pool.acquire() as conn:
-        if not await _device_belongs(conn, device_id, tenant_id):
+        tenant_name = await conn.fetchval(
+            "SELECT tenant_name FROM iot.tenant WHERE tenant_id::text = $1 OR tenant_name = $1",
+            tenant_id,
+        )
+        if not tenant_name:
+            raise ValueError("Tenant not found")
+
+        if not await _device_belongs(conn, device_id, tenant_name):
             raise ValueError("Device does not belong to tenant")
-        await _set_rls(conn, tenant_id)
+        await _set_rls(conn, tenant_name)
 
         cmd_id = str(uuid.uuid4())
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        payload = f"{cmd_id},{ts},{type_},{params or ''}"
-        topic = f"{settings.app_env}/{tenant_id}/devices/{device_id}/command"
+        params_str = _format_params(params)
+        payload = f"{cmd_id},{ts},{type_}" + (f",{params_str}" if params_str else "")
+        topic = f"{settings.app_env}/{tenant_name}/devices/{device_id}/command"
+
+        if isinstance(params, dict):
+            db_params = params
+        elif isinstance(params, (list, tuple)):
+            db_params = {"args": list(params)}
+        elif params is None:
+            db_params = {}
+        else:
+            db_params = {"args": [params]}
 
         await cmdrepo.create_command(
             conn,
             device_id=device_id,
             cmd_id=cmd_id,
             type_=type_,
-            params=params or {},
+            params=db_params,
             retain=retain,
         )
-        logger.info("Created command %s for device %s tenant %s", cmd_id, device_id, tenant_id)
+        logger.info("Created command %s for device %s tenant %s", cmd_id, device_id, tenant_name)
 
     async with Client(
         settings.mqtt_host,
@@ -145,7 +190,7 @@ async def publish_command(
         await client.publish(topic, payload.encode("utf-8"), qos=1, retain=retain)
 
     async with pool.acquire() as conn:
-        await _set_rls(conn, tenant_id)
+        await _set_rls(conn, tenant_name)
         await cmdrepo.mark_sent(conn, cmd_id=cmd_id)
     return cmd_id
 
@@ -176,6 +221,7 @@ async def run_mqtt_forever():
                     async with client.messages() as messages:
                         async with asyncio.timeout(10):
                             await client.subscribe(TOPIC_HUM, qos=1)
+                            await client.subscribe(TOPIC_TMP, qos=1)
                             await client.subscribe(TOPIC_LOC, qos=1)
                             await client.subscribe(TOPIC_STATE, qos=1)
                             await client.subscribe(TOPIC_ACK, qos=1)
@@ -243,6 +289,8 @@ async def run_mqtt_forever():
 
                                     if leaf == "humidity":
                                         await _handle_humidity(payload, conn, external_id=device_id, device_uuid=resolved)
+                                    elif leaf == "temperature":
+                                        await _handle_temperature(payload, conn, external_id=device_id, device_uuid=resolved)
                                     elif leaf == "location":
                                         await _handle_location(payload, conn, external_id=device_id, device_uuid=resolved)
                                     elif leaf == "state":

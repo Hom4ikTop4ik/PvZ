@@ -1,5 +1,6 @@
 user prod/alpha
 topic write %u/sensors/+/humidity
+topic write %u/sensors/+/temperature
 topic write %u/sensors/+/location
 topic write %u/sensors/+/state
 topic write %u/devices/+/ack

@@ -60,28 +60,28 @@
           <button
             class="btn primary"
             type="button"
-            :disabled="pendingCommand === 'power_on'"
-            @click="sendCommand('power_on')"
+            :disabled="pendingCommand === 'wake'"
+            @click="sendCommand('wake')"
           >
-            {{ pendingCommand === 'power_on' ? 'Отправляем...' : 'Включить устройство' }}
+            {{ pendingCommand === 'wake' ? 'Отправляем...' : 'Включить устройство' }}
           </button>
 
           <button
             class="btn"
             type="button"
-            :disabled="pendingCommand === 'power_off'"
-            @click="sendCommand('power_off')"
+            :disabled="pendingCommand === 'sleep'"
+            @click="sendCommand('sleep')"
           >
-            {{ pendingCommand === 'power_off' ? 'Отправляем...' : 'Выключить устройство' }}
+            {{ pendingCommand === 'sleep' ? 'Отправляем...' : 'Выключить устройство' }}
           </button>
 
           <button
             class="btn"
             type="button"
-            :disabled="pendingCommand === 'refresh'"
-            @click="sendCommand('refresh')"
+            :disabled="pendingCommand === 'fetch'"
+            @click="sendCommand('fetch')"
           >
-            {{ pendingCommand === 'refresh' ? 'Запрашиваем...' : 'Запросить свежие данные' }}
+            {{ pendingCommand === 'fetch' ? 'Запрашиваем...' : 'Запросить свежие данные' }}
           </button>
         </div>
       </div>
