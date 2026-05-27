@@ -84,6 +84,7 @@
             {{ pendingCommand === 'fetch' ? 'Запрашиваем...' : 'Запросить свежие данные' }}
           </button>
         </div>
+      </div>
 
       <div class="card p-24">
         <h3 class="section-title">Политика обновления данных</h3>
