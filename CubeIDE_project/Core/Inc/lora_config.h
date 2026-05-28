@@ -1,0 +1,53 @@
+#ifndef LORA_CONFIG_H
+#define LORA_CONFIG_H
+
+/* ============================================================================
+ * LoRa Driver Configuration for EBYTE E22 400T30D
+ * ============================================================================
+ * Все размеры и таймауты вынесены здесь для удобства настройки.
+ * Примечание: для первых тестов используются значения из ESP32 версии проекта.
+ * ============================================================================ */
+
+/* Параметры очереди TX */
+#define LORA_TX_QUEUE_SIZE      24      /* максимум сообщений в очереди */
+#define LORA_MAX_PAYLOAD_LEN    240     /* максимальный размер пакета в байтах */
+
+/* Pacing - минимальный интервал между отправками (мс) */
+#define LORA_PACING_INTERVAL_MS 1200    /* мс между отправками, как в ESP32 */
+
+/* Антидублирование - размер истории */
+#define LORA_HISTORY_SIZE       128     /* количество ключей для дедупликации */
+
+/* Node ID (строка) - идентификатор этого узла в сети */
+#define LORA_UNASSIGNED_NODE_ID "0"
+#define LORA_NODE_ID_MAX_LEN    16
+#define LORA_NODE_MAC_MAX_LEN   32
+#define LORA_JOIN_INTERVAL_MS   5000
+
+#ifndef LORA_NODE_ID
+#define LORA_NODE_ID            LORA_UNASSIGNED_NODE_ID
+#endif
+
+/* Таймауты UART и LoRa операций */
+#define LORA_UART_TIMEOUT_MS    100     /* таймаут операций UART (мс) */
+#define LORA_CHAR_TIMEOUT_MS    10      /* таймаут между символами (мс) - для read_line */
+#define LORA_LINE_MAX_TIMEOUT_MS 500   /* максимальное время ожидания строки (мс) */
+
+/* Пин AUX для проверки готовности модуля E22 */
+/* E22 устанавливает AUX=0 во время передачи/инициализации, AUX=1 когда готов */
+#define LORA_AUX_PORT           GPIOA
+#define LORA_AUX_PIN            GPIO_PIN_7
+
+/* Режимы модуля E22 */
+#define LORA_MODE_NORMAL        0
+#define LORA_MODE_WAKEUP        1
+#define LORA_MODE_POWER_SAVING  2
+
+/* AT команды для E22 (используются при конфигурации) */
+/* TODO: AT-команды E22 реализованы базово, читают только одну строку ответа.
+ * E22 может отвечать несколькими строками (OK\r\n или +DATA\r\nOK\r\n).
+ * Для первых тестов LoRa модуль уже настроен (перенастройка не требуется).
+ * Полноценная реализация AT-протокола с multi-line parsing будет добавлена позже.
+ */
+
+#endif /* LORA_CONFIG_H */

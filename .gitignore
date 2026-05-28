@@ -5,3 +5,41 @@ __pycache__/
 node_modules/
 venv/
 .env
+
+# IDE и временные файлы
+.claude/
+.windsurf/
+**/.vscode/
+**/Backup/
+
+# Сборка и бинарники
+**/build/
+**/Debug/
+**/Release/
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.obj
+
+# Сгенерированные CubeMX (пересоздадутся из .ioc)
+CubeIDE_project/Core/Inc/stm32l4xx_hal_conf.h
+CubeIDE_project/Core/Src/system_stm32l4xx.c
+CubeIDE_project/Core/Src/stm32l4xx_hal_msp.c
+CubeIDE_project/Drivers/
+CubeIDE_project/cmake/
+
+# CubeIDE (автогенерируются)
+**/.cproject
+**/.mxproject
+**/.project
+**/.settings
+**/*.launch
+
+# Чужая библиотека
+EBYTE22_library/
+
+# Логи
+*.log
+
