@@ -38,7 +38,8 @@ async def humidity_export(
 ):
     owns = await devices_repo.get_device_by_id(conn, device_id, tenant_id)
     if owns is None:
-        return []
+        return Response(content="ts,humidity\n", media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="humidity_{device_id}.csv"'})
 
     rows = await telemetry_repo.query_humidity(
         conn,
@@ -49,7 +50,11 @@ async def humidity_export(
     csv = "ts,humidity\n" + "\n".join(
         f"{r['sent_ts'].isoformat()},{r['humidity']}" for r in rows
     )
-    return Response(content=csv, media_type="text/csv")
+    return Response(
+        content=csv,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="humidity_{device_id}.csv"'},
+    )
 
 
 @router.post("/temperature/{device_id}")
@@ -81,7 +86,8 @@ async def temperature_export(
 ):
     owns = await devices_repo.get_device_by_id(conn, device_id, tenant_id)
     if owns is None:
-        return []
+        return Response(content="ts,temperature\n", media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="temperature_{device_id}.csv"'})
 
     rows = await telemetry_repo.query_temperature(
         conn,
@@ -92,4 +98,8 @@ async def temperature_export(
     csv = "ts,temperature\n" + "\n".join(
         f"{r['sent_ts'].isoformat()},{r['temperature']}" for r in rows
     )
-    return Response(content=csv, media_type="text/csv")
+    return Response(
+        content=csv,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="temperature_{device_id}.csv"'},
+    )

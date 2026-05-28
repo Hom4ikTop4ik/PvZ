@@ -863,6 +863,13 @@ onBeforeUnmount(() => {
           <div class="stat-v">{{ st.totalAfter }}</div>
         </div>
       </div>
+
+      <div class="export-row">
+        <span class="export-label">Экспорт CSV</span>
+        <button class="btn" type="button" @click="exportCsv('all')">Всё</button>
+        <button class="btn" type="button" @click="exportCsv('temperature')">Температура</button>
+        <button class="btn" type="button" @click="exportCsv('humidity')">Влажность</button>
+      </div>
     </div>
   </div>
 </template>
@@ -1083,5 +1090,21 @@ onBeforeUnmount(() => {
   .file-field {
     min-width: 100%;
   }
+}
+
+.export-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #eef2f8;
+}
+
+.export-label {
+  font-size: 14px;
+  color: #4b5b7a;
+  margin-right: 4px;
 }
 </style>

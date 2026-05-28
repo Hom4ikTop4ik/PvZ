@@ -1,6 +1,6 @@
 const BASE = import.meta.env.VITE_API_BASE
 
-async function request(path, { method = 'GET', body, token } = {}) {
+async function request(path, { method = 'GET', body, token, silent401 = false } = {}) {
   const headers = { Accept: 'application/json' }
 
   if (body) headers['Content-Type'] = 'application/json'
@@ -21,9 +21,13 @@ async function request(path, { method = 'GET', body, token } = {}) {
   const data = isJson ? await resp.json() : null
 
   if (resp.status === 401) {
-    localStorage.removeItem('pvz_token')
-    window.location.href = '/login'
-    throw new Error('Unauthorized')
+    if (!silent401) {
+      localStorage.removeItem('pvz_token')
+      window.location.href = '/login'
+    }
+    const err = new Error('Unauthorized')
+    err.status = 401
+    throw err
   }
 
   if (!resp.ok) {
@@ -42,4 +46,5 @@ export const api = {
   post: (path, body) => request(path, { method: 'POST', body }),
   put: (path, body) => request(path, { method: 'PUT', body }),
   del: (path) => request(path, { method: 'DELETE' }),
+  silentGet: (path) => request(path, { method: 'GET', silent401: true }),
 }

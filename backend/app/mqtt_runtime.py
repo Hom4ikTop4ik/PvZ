@@ -11,6 +11,12 @@ from .db import get_pool
 from .repositories import devices as devrepo
 from .repositories import telemetry as telrepo
 from .repositories import commands as cmdrepo
+from .instrumentation import (
+    MQTT_MESSAGES_RECEIVED,
+    MQTT_MESSAGES_ERRORS,
+    MQTT_COMMANDS_PUBLISHED,
+    MQTT_CONNECTED,
+)
 
 TOPIC_HUM = "+/+/sensors/+/humidity"
 TOPIC_TMP = "+/+/sensors/+/temperature"
@@ -222,6 +228,7 @@ async def publish_command(
         keepalive=30,
     ) as client:
         logger.info("Publishing command %s to topic %s payload=%r", cmd_id, topic, payload)
+        MQTT_COMMANDS_PUBLISHED.labels(type=type_).inc()
         await client.publish(topic, payload.encode("utf-8"), qos=1, retain=retain)
 
     async with pool.acquire() as conn:
@@ -249,6 +256,7 @@ async def run_mqtt_forever():
                 client_id=client_id,
             ) as client:
                 logger.info("Connected to MQTT broker client_id=%s", client_id)
+                MQTT_CONNECTED.set(1)
                 try:
                     async with client.messages() as messages:
                         async with asyncio.timeout(10):
@@ -309,8 +317,13 @@ async def run_mqtt_forever():
                                         await _handle_ack(payload, conn)
                                     else:
                                         logger.info("Unknown leaf %s, ignoring", leaf)
+                                    MQTT_MESSAGES_RECEIVED.labels(env=env, leaf=leaf).inc()
                                     logger.info("Stored: device=%s leaf=%s tenant=%s", resolved, leaf, tenant_name)
                             except Exception:
+                                try:
+                                    MQTT_MESSAGES_ERRORS.labels(env=env, leaf=leaf).inc()
+                                except Exception:
+                                    pass
                                 logger.exception("Error processing MQTT message")
                 except MqttError as e:
                     logger.exception("MQTT error: %r", e)
@@ -324,6 +337,7 @@ async def run_mqtt_forever():
             logger.exception("Timeout connecting/subscribing, retrying in 2s")
             await asyncio.sleep(2)
         except MqttError:
+            MQTT_CONNECTED.set(0)
             logger.exception("MQTT connection error, retrying in 2s")
             await asyncio.sleep(2)
         except Exception:
