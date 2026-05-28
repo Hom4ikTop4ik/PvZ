@@ -11,7 +11,11 @@ PASSWORD = os.environ.get("MQTT_PASSWORD")
 
 SUB_FILTERS = [s.strip() for s in os.environ.get("SUB_FILTERS", "").splitlines() if s.strip()]
 if not SUB_FILTERS:
-    SUB_FILTERS = ["+/+/sensors/+/humidity", "+/+/devices/+/command"]
+    SUB_FILTERS = [
+        "+/+/sensors/+/humidity",
+        "+/+/sensors/+/temperature",
+        "+/+/devices/+/command",
+    ]
 
 print(f"[retain-cleaner] connecting to {HOST}:{PORT}, filters={SUB_FILTERS}")
 

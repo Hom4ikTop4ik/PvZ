@@ -19,5 +19,18 @@ class DeviceOut(BaseModel):
 
 class CommandIn(BaseModel):
     type: str
-    params: dict | None = None
+    params: dict | list | str | None = None
     retain: bool = False
+
+
+class CommandOut(BaseModel):
+    cmd_id: str
+    device_id: str
+    type: str
+    params: dict | list | str | None = None
+    retain: bool = False
+    issued_ts: datetime | None = None
+    sent_ts: datetime | None = None
+    ack_ts: datetime | None = None
+    status: str | None = None
+    error: str | None = None

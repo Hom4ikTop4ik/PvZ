@@ -1,4 +1,3 @@
-<!-- src/App.vue -->
 <template>
   <div class="container">
     <header class="header">
@@ -8,46 +7,41 @@
       </div>
 
       <nav class="tabs">
-        <router-link
-          to="/"
-          :class="['tab', { active: route.path === '/' }]"
-        >
+        <router-link to="/" class="tab">
           Главная
         </router-link>
 
-        <router-link
-          to="/charts"
-          :class="['tab', { active: route.path === '/charts' }]"
-        >
-          Графики
-        </router-link>
-
-        <router-link
-          v-if="isAuth"
-          to="/tenants"
-          :class="['tab', { active: route.path === '/tenants' }]"
-        >
-          Тенанты
-        </router-link>
-
-        <!-- пока заглушки -->
-        <button class="tab" type="button">Карта</button>
-        <button class="tab" type="button">Управление</button>
-        <button class="tab" type="button">Настройки</button>
-
-        <span style="flex:1"></span>
-
-        <!-- справа: либо "войти/регистрация", либо "вошли как / выйти" -->
         <template v-if="isAuth">
-          <span class="helper user-label">
-            Вошли как {{ userEmail }}
-          </span>
+          <router-link to="/charts" class="tab">
+            Графики
+          </router-link>
+
+          <router-link to="/tenants" class="tab">
+            Тенанты
+          </router-link>
+
+          <router-link to="/map" class="tab">
+            Карта
+          </router-link>
+
+          <router-link to="/management" class="tab">
+            Управление
+          </router-link>
+
+          <router-link to="/notifications" class="tab">
+            Уведомления
+          </router-link>
+
+          <span style="flex:1"></span>
+
           <button class="tab" type="button" @click="handleLogout">
             Выйти
           </button>
         </template>
 
         <template v-else>
+          <span style="flex:1"></span>
+
           <router-link to="/login" class="tab">
             Войти
           </router-link>
@@ -65,24 +59,29 @@
 </template>
 
 <script setup>
-import { useRoute, useRouter } from 'vue-router'
+import { onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useToast } from 'vue-toastification'
 import { useAuth } from './auth'
+import { startNotificationWatcher, stopNotificationWatcher } from './notifications'
 
-const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const { isAuth, userEmail, logout } = useAuth()
+const { isAuth, logout } = useAuth()
 
 function handleLogout() {
   logout()
+  stopNotificationWatcher()
   toast.info('Вы вышли из аккаунта')
   router.push('/login')
 }
-</script>
 
-<style scoped>
-.user-label {
-  margin-right: 8px;
-}
-</style>
+onMounted(() => {
+  if (isAuth.value) startNotificationWatcher(toast)
+})
+
+watch(isAuth, (value) => {
+  if (value) startNotificationWatcher(toast)
+  else stopNotificationWatcher()
+})
+</script>

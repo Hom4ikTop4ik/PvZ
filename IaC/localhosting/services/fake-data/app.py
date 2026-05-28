@@ -56,6 +56,8 @@ class FakeDevice:
         tenant: str,
         client: mqtt.Client,
         humidity_base: float = 45.0,
+        temperature_base: float = 22.0,
+        periods: dict | None = None,
     ) -> None:
         self.id = device_id
         self.client = client
@@ -66,6 +68,8 @@ class FakeDevice:
 
         self.seq = 0
         self.humidity = humidity_base + random.uniform(-3, 3)
+        self.temperature = temperature_base + random.uniform(-2, 2)
+        self.periods = dict(periods or {"hum": 1.0, "tmp": 1.0, "stt": 5.0, "geo": 10.0})
         self.rssi = -60 + random.randint(-15, 5)
         self.snr = 7.5 + random.uniform(-3, 3)
         self.battery = random.uniform(40.0, 100.0)
@@ -81,6 +85,14 @@ class FakeDevice:
         self.humidity = clamp(self.humidity + random.uniform(-0.3, 0.3), 0.0, 100.0)
         payload = f"{self.id},{now_iso()},{self.humidity:.2f},{self.seq}"
         topic = f"{self.env}/{self.tenant}/sensors/{self.id}/humidity"
+        info = self.client.publish(topic, payload=payload, qos=1, retain=retain)
+        print(info)
+
+    def publish_temperature(self, retain: bool = False) -> None:
+        self.seq += 1
+        self.temperature = clamp(self.temperature + random.uniform(-0.2, 0.2), -40.0, 60.0)
+        payload = f"{self.id},{now_iso()},{self.temperature:.2f},{self.seq}"
+        topic = f"{self.env}/{self.tenant}/sensors/{self.id}/temperature"
         info = self.client.publish(topic, payload=payload, qos=1, retain=retain)
         print(info)
 
@@ -108,13 +120,13 @@ class FakeDevice:
             def ack():
                 status = "ok"
                 details = ""
-                ack_payload = f"{command_id},{now_iso()},{status},{details}"
-                self.client.publish(self.topic_ack, payload=ack_payload, qos=1, retain=False)
 
                 if len(parts) >= 3:
                     cmd_type = parts[2].strip().upper()
                 else:
                     cmd_type = "UNKNOWN"
+
+                cmd_params = parts[3].split(",") if len(parts) >= 4 else []
 
                 if cmd_type == "SLEEP":
                     self.online = "sleep"
@@ -122,8 +134,35 @@ class FakeDevice:
                     self.online = "online"
                 elif cmd_type == "OFFLINE":
                     self.online = "offline"
+                elif cmd_type == "FETCH":
+                    targets = [p.strip().lower() for p in cmd_params if p.strip()]
+                    if not targets:
+                        targets = ["hum", "tmp", "stt", "geo"]
+                    for target in targets:
+                        if target == "hum":
+                            self.publish_humidity(retain=False)
+                        elif target == "tmp":
+                            self.publish_temperature(retain=False)
+                        elif target == "stt":
+                            self.publish_state(retain=True)
+                        elif target == "geo":
+                            self.publish_location(retain=True)
+                elif cmd_type == "INTERVAL":
+                    try:
+                        metric = cmd_params[0].strip().lower() if cmd_params else ""
+                        seconds = float(cmd_params[1]) if len(cmd_params) > 1 else 0
+                        if metric in self.periods and seconds > 0:
+                            self.periods[metric] = seconds
+                        else:
+                            status = "error"
+                            details = f"bad interval params: {cmd_params}"
+                    except (ValueError, IndexError) as exc:
+                        status = "error"
+                        details = f"bad interval params: {exc}"
 
-                print(f"[faker:{self.id}] command {command_id} processed: {cmd_type}")
+                ack_payload = f"{command_id},{now_iso()},{status},{details}"
+                self.client.publish(self.topic_ack, payload=ack_payload, qos=1, retain=False)
+                print(f"[faker:{self.id}] command {command_id} processed: {cmd_type} params={cmd_params}")
 
             threading.Timer(0.5 + random.random(), ack).start()
         except Exception as e:
@@ -144,6 +183,7 @@ def run_faker() -> None:
     state_period = float(os.getenv("STATE_PERIOD", "5.0"))
     loc_period = float(os.getenv("LOCATION_PERIOD", "10.0"))
     humidity_period = float(os.getenv("HUMIDITY_PERIOD", "1.0"))
+    temperature_period = float(os.getenv("TEMPERATURE_PERIOD", "1.0"))
     mqtt_connections = int(os.getenv("MQTT_CONNECTIONS", "1"))
 
     if mqtt_connections < 1:
@@ -154,7 +194,8 @@ def run_faker() -> None:
     print(
         f"[faker] starting with host={broker_host}:{broker_port} env={env} tenant={tenant} "
         f"devices={devices_count} connections={mqtt_connections} "
-        f"humidity_period={humidity_period}s state_period={state_period}s loc_period={loc_period}s"
+        f"humidity_period={humidity_period}s temperature_period={temperature_period}s "
+        f"state_period={state_period}s loc_period={loc_period}s"
     )
     clients: List[mqtt.Client] = []
     for i in range(mqtt_connections):
@@ -179,6 +220,13 @@ def run_faker() -> None:
             tenant=tenant,
             client=client,
             humidity_base=random.uniform(40, 60),
+            temperature_base=random.uniform(18, 26),
+            periods={
+                "hum": humidity_period,
+                "tmp": temperature_period,
+                "stt": state_period,
+                "geo": loc_period,
+            },
         )
         devices_per_client[client].append(dev)
 
@@ -216,6 +264,7 @@ def run_faker() -> None:
     next_state = [t0 + random.uniform(0, state_period) for _ in all_devices]
     next_loc = [t0 + random.uniform(0, loc_period) for _ in all_devices]
     next_h = [t0 + random.uniform(0, humidity_period) for _ in all_devices]
+    next_t = [t0 + random.uniform(0, temperature_period) for _ in all_devices]
 
     try:
         while True:
@@ -223,15 +272,19 @@ def run_faker() -> None:
             for i, d in enumerate(all_devices):
                 if now >= next_h[i] and d.online == "online":
                     d.publish_humidity(retain=False)
-                    next_h[i] = now + humidity_period
+                    next_h[i] = now + d.periods["hum"]
+
+                if now >= next_t[i] and d.online == "online":
+                    d.publish_temperature(retain=False)
+                    next_t[i] = now + d.periods["tmp"]
 
                 if now >= next_state[i]:
                     d.publish_state(retain=True)
-                    next_state[i] = now + state_period
+                    next_state[i] = now + d.periods["stt"]
 
                 if now >= next_loc[i]:
                     d.publish_location(retain=True)
-                    next_loc[i] = now + loc_period
+                    next_loc[i] = now + d.periods["geo"]
 
             time.sleep(0.01)
     except KeyboardInterrupt:

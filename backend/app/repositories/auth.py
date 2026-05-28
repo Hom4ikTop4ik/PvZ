@@ -18,7 +18,10 @@ async def create_user(conn: asyncpg.Connection, *, username: str, email: str | N
     tenant_name = settings.app_tenant
     tenant_id = await conn.fetchval("SELECT tenant_id::text FROM iot.tenant WHERE tenant_name = $1", tenant_name)
     if tenant_id is None:
-        tenant_id = await conn.fetchval("INSERT INTO iot.tenant (tenant_name) VALUES ($1) RETURNING tenant_id::text", tenant_name)
+        tenant_id = await conn.fetchval(
+            "INSERT INTO iot.tenant (tenant_name, tenant_owner) VALUES ($1, $2) RETURNING tenant_id::text",
+            tenant_name, username,
+        )
 
     query = """
     INSERT INTO iot.users (name, email, password, tenant_id)

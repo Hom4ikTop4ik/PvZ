@@ -1,0 +1,5 @@
+twc_token         = "YOUR_TIMEWEB_API_TOKEN"
+ssh_key_name      = "pvz-deploy"
+mqtt_password     = "strong-mqtt-password"
+db_password       = "strong-db-password"
+availability_zone = "ru-1"

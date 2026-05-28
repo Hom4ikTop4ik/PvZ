@@ -1,0 +1,167 @@
+.charts-page {
+  padding: 18px;
+}
+
+.page-title {
+  margin: 0 0 12px;
+  font-size: 34px;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 160px 160px 120px 140px;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.filter .label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: #3b4452;
+}
+
+.select, .input {
+  width: 100%;
+  border: 1px solid #cfd6e4;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.actions .btn {
+  width: 100%;
+  border: 1px solid #2b6cb0;
+  background: #2b6cb0;
+  color: #fff;
+  border-radius: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+.actions .btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 280px 280px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e6e9ef;
+  border-radius: 14px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.card-title {
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.devices-list {
+  height: 260px;
+  overflow: auto;
+  border: 1px solid #cfd6e4;
+  border-radius: 10px; /* не “овал” */
+  background: #fff;
+}
+
+.device-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 10px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #eef2f7;
+}
+.device-row:last-child {
+  border-bottom: 0;
+}
+.device-row.selected {
+  background: #e9f1ff;
+}
+.device-name {
+  font-weight: 600;
+}
+.device-sub {
+  font-size: 12px;
+  color: #6b778c;
+}
+
+/* --- sensors --- */
+.sensors-box {
+  border: 1px solid #cfd6e4;
+  border-radius: 10px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.sensors-scroll {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 10px; 
+  box-sizing: border-box;
+}
+
+.sensor-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 2px;
+}
+
+.hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6b778c;
+}
+
+/* --- charts --- */
+.charts-card {
+  min-height: 360px;
+}
+
+.charts-area {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.chart-panel-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.chart-box {
+  height: 280px;      
+  min-height: 280px;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.chart-box canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.muted {
+  color: #6b778c;
+}
+.small {
+  font-size: 12px;
+  margin-top: 6px;
+}
+.error {
+  color: #b00020;
+}

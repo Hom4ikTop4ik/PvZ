@@ -35,8 +35,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useToast } from 'vue-toastification'
+import { useAuth } from '../auth'
 
 const toast = useToast()
+const auth = useAuth()
 
 const tenants = ref([])
 const name = ref('')
@@ -61,7 +63,14 @@ async function createTenant() {
     const { api } = await import('../api')
     const payload = { tenant: name.value, env: 'dev' }
     const resp = await api.post('/tenants', payload)
-    toast.success('Тенант создан')
+
+    if (resp?.access_token) {
+      auth.login(resp.access_token, auth.userEmail.value)
+      toast.success('Тенант «' + resp.tenant + '» создан, сессия обновлена')
+    } else {
+      toast.success('Тенант создан')
+    }
+
     name.value = ''
     desc.value = ''
     await loadTenants()
