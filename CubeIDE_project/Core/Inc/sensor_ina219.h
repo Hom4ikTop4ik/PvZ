@@ -1,6 +1,7 @@
 #ifndef SENSOR_INA219_H
 #define SENSOR_INA219_H
 
+#include <stdbool.h>
 #include "sensor_common.h"
 
 /* I2C адрес */
@@ -18,21 +19,44 @@
 #define BATTERY_MIN_VOLTAGE_MV  2500
 #define BATTERY_MAX_VOLTAGE_MV  3650
 
-/* Заглушки power gating */
-void ina219_power_on(void);
-void ina219_power_off(void);
+/* Error values */
+#define INA219_ERROR_VOLTAGE 0.0f
+#define INA219_ERROR_CURRENT -999.0f
+
+/* State machine timeout */
+#define INA219_I2C_TIMEOUT_MS 100
+
+/* State machine states */
+typedef enum {
+    INA219_STATE_IDLE = 0,
+    INA219_STATE_READ_VOLTAGE,
+    INA219_STATE_READ_CURRENT,
+    INA219_STATE_ERROR
+} ina219_state_t;
+
+/* State machine variables (extern for logging) */
+extern ina219_state_t ina219_state;
+extern uint32_t ina219_state_start_ms;
+extern bool ina219_busy;
+extern bool ina219_result_ready;
 
 /* API датчика */
 int ina219_init(void);
-int ina219_start(void);
-int ina219_poll(void);
-int ina219_get(sensor_reading_t *out);
+
+/* Request measurement - non-blocking */
+int ina219_request_measurement(void);
+
+/* Get last result - non-blocking */
+int ina219_get_result(sensor_reading_t *out);
+
+/* State machine tick - call every main loop iteration */
+void ina219_tick(void);
 
 /* История */
 int ina219_get_history(sensor_history_t *out);
 void ina219_clear_history(void);
 
 /* Прямое чтение напряжения */
-float ina219_read_voltage(void);  /* Возвращает напряжение в Вольтах */
+int ina219_read_voltage(float *voltage);  /* Возвращает напряжение в Вольтах */
 
 #endif /* SENSOR_INA219_H */

@@ -18,7 +18,7 @@ need_status_info = True
 # Одноразовые триггеры "сделай сейчас"
 force_humidity_measure = False
 force_temperature_measure = False
-force_geo_measure = False
+force_gps_measure = False
 force_status_measure = False
 
 _last_hw_ms = 0
@@ -45,10 +45,10 @@ def check_need_temperature_measurement() -> bool:
         return True
     return _period_due(_last_ds_ms, config.DS_PERIOD_MS)
 
-def check_need_geo_measurement() -> bool:
+def check_need_gps_measurement() -> bool:
     if not need_gps_info:
         return False
-    if force_geo_measure:
+    if force_gps_measure:
         return True
     return _period_due(_last_gps_ms, config.GPS_PERIOD_MS)
 
@@ -60,7 +60,7 @@ def check_need_status_measurement() -> bool:
     return _period_due(_last_status_ms, config.STATUS_PERIOD_MS)
 
 def check_smth():
-    return check_need_humidity_measurement() or check_need_temperature_measurement() or check_need_geo_measurement() or check_need_status_measurement()
+    return check_need_humidity_measurement() or check_need_temperature_measurement() or check_need_gps_measurement() or check_need_status_measurement()
 
 
 
@@ -194,7 +194,7 @@ def send_temperature(temperature: float, device_id=None, timestamp=None) -> bool
     payload = f"{device_id};{timestamp};{msg_rnd_id};tmp;{temperature:.2f}"
     return _enqueue_payload(payload)
 
-def send_geo(lat: float, lon: float, device_id=None, timestamp=None) -> bool:
+def send_gps(lat: float, lon: float, device_id=None, timestamp=None) -> bool:
     if not need_gps_info:
         return False
     if not device_id:
@@ -202,7 +202,7 @@ def send_geo(lat: float, lon: float, device_id=None, timestamp=None) -> bool:
     if not timestamp:
         timestamp = get_iso_timestamp()
     msg_rnd_id = random.randint(0, 999_999)
-    payload = f"{device_id};{timestamp};{msg_rnd_id};geo;{lat:.6f},{lon:.6f}"
+    payload = f"{device_id};{timestamp};{msg_rnd_id};gps;{lat:.6f},{lon:.6f}"
     return _enqueue_payload(payload)
 
 def send_state(rssi: int, snr: float, battery: float, online: bool = True, device_id=None, timestamp=None) -> bool:
@@ -218,7 +218,7 @@ def send_state(rssi: int, snr: float, battery: float, online: bool = True, devic
 
 # Команды / ретрансляция
 def do_command(command, *params):
-    global force_humidity_measure, force_temperature_measure, force_geo_measure, force_status_measure
+    global force_humidity_measure, force_temperature_measure, force_gps_measure, force_status_measure
     # сюда вы потом добавите команды типа HUM_ON/HUM_OFF и т.п.
     if command == "SLEEP":
         print("sleep 3 secs")
@@ -231,7 +231,7 @@ def do_command(command, *params):
         force_temperature_measure = True
         return
     if command == "FORCE_GEO":
-        force_geo_measure = True
+        force_gps_measure = True
         return
     if command == "FORCE_STT":
         force_status_measure = True
@@ -260,7 +260,7 @@ while True:
     if not button.value():
         force_humidity_measure = True
         force_temperature_measure = True
-        force_geo_measure = True
+        force_gps_measure = True
         force_status_measure = True
 
     # 1) RX LoRa
@@ -304,14 +304,14 @@ while True:
             _last_ds_ms = time.ticks_ms()
             force_temperature_measure = False
 
-    if check_need_geo_measurement():
+    if check_need_gps_measurement():
         # если нет fix — не сбрасываем force, просто ждём следующей итерации
         if gps_sensor.check_ready():
             lat, lon = gps_sensor.read_lat_lon()
-            if send_geo(lat, lon, device_id=device_id):
-                print(f"  geo: {lat}, {lon}")
+            if send_gps(lat, lon, device_id=device_id):
+                print(f"  gps: {lat}, {lon}")
                 _last_gps_ms = time.ticks_ms()
-                force_geo_measure = False
+                force_gps_measure = False
         else:
             # заглушка Пятёрка
             # lat = 54.847487 + random.uniform(-0.001, +0.001)
@@ -323,10 +323,10 @@ while True:
             # lon = GPS_ERROR_VALUE
             lat = 54.843696 + random.uniform(-0.00001, +0.00001)
             lon = 83.091125 + random.uniform(-0.00001, +0.00001)
-            if send_geo(lat, lon, device_id=device_id):
-                print(f"  geo_mock: {lat}, {lon}")
+            if send_gps(lat, lon, device_id=device_id):
+                print(f"  gps_mock: {lat}, {lon}")
                 _last_gps_ms = time.ticks_ms()
-                force_geo_measure = False
+                force_gps_measure = False
 
 
     if check_need_status_measurement():

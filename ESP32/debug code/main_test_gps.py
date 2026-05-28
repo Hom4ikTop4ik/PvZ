@@ -62,13 +62,13 @@ def wait_utc_date_time(gps, timeout_s: int = 60, log_every_ms: int = 2000):
     return None, None
 
 
-def send_geo(lora, lat: float, lon: float, device_id=None, timestamp=None):
+def send_gps(lora, lat: float, lon: float, device_id=None, timestamp=None):
     if not device_id:
         device_id = config.NODE_ID
     if not timestamp:
         timestamp = get_iso_timestamp()
     msg_rnd_id = random.randint(0, 999_999)
-    payload = f"{device_id};{timestamp};{msg_rnd_id};geo;{lat:.6f},{lon:.6f}"
+    payload = f"{device_id};{timestamp};{msg_rnd_id};gps;{lat:.6f},{lon:.6f}"
     lora.send_bytes(payload.encode("utf-8"))
     print("LoRa TX:", payload)
 
@@ -101,7 +101,7 @@ else:
         if gps.check_ready():
             d, t, lat, lon = gps.read_lat_lon()
             print("GPS FIX:", d, t, lat, lon)
-            send_geo(lora, lat, lon)
+            send_gps(lora, lat, lon)
         else:
             print("NaH")
         time.sleep_ms(100)

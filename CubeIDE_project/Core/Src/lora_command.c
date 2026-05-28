@@ -1,8 +1,19 @@
-#include "lora_command.h"
-#include "lora_packet.h"
-#include "main.h"
+// lora_command.c
+
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+
+#include "rtc.h"
+
+#include "lora_command.h"
+#include "lora_packet.h"
+#include "lora_join.h"
+#include "interval.h"
+
+#include "printf.h"
+
+extern volatile bool system_sleep_mode;
 
 /* ============================================================================
  * Command Parser & Handler Implementation
@@ -21,12 +32,18 @@ void lora_command_set_retransmit_callback(lora_retransmit_callback_t callback)
 lora_cmd_type_t lora_command_parse(const char *cmd_str)
 {
     if (!cmd_str) return LORA_CMD_TYPE_UNKNOWN;
-    
+
     if (strcmp(cmd_str, LORA_CMD_SLEEP) == 0) return LORA_CMD_TYPE_SLEEP;
+    if (strcmp(cmd_str, LORA_CMD_WAKE) == 0)  return LORA_CMD_TYPE_WAKE;
+
+    // if (strcmp(cmd_str, LORA_CMD_INTERVAL) == 0) return LORA_CMD_TYPE_INTERVAL;
+
+    if (strcmp(cmd_str, LORA_CMD_FORCE_ALL) == 0) return LORA_CMD_TYPE_FORCE_ALL;
     if (strcmp(cmd_str, LORA_CMD_FORCE_HUM) == 0) return LORA_CMD_TYPE_FORCE_HUM;
     if (strcmp(cmd_str, LORA_CMD_FORCE_TMP) == 0) return LORA_CMD_TYPE_FORCE_TMP;
     if (strcmp(cmd_str, LORA_CMD_FORCE_GEO) == 0) return LORA_CMD_TYPE_FORCE_GEO;
     if (strcmp(cmd_str, LORA_CMD_FORCE_STT) == 0) return LORA_CMD_TYPE_FORCE_STT;
+
     if (strcmp(cmd_str, LORA_CMD_HUM_ON) == 0) return LORA_CMD_TYPE_HUM_ON;
     if (strcmp(cmd_str, LORA_CMD_HUM_OFF) == 0) return LORA_CMD_TYPE_HUM_OFF;
     if (strcmp(cmd_str, LORA_CMD_TMP_ON) == 0) return LORA_CMD_TYPE_TMP_ON;
@@ -36,79 +53,187 @@ lora_cmd_type_t lora_command_parse(const char *cmd_str)
     if (strcmp(cmd_str, LORA_CMD_STT_ON) == 0) return LORA_CMD_TYPE_STT_ON;
     if (strcmp(cmd_str, LORA_CMD_STT_OFF) == 0) return LORA_CMD_TYPE_STT_OFF;
     
+    // Составная команда interval,TYPE,seconds
+	char buf[64];
+	strncpy(buf, cmd_str, sizeof(buf)-1);
+	buf[sizeof(buf)-1] = '\0';
+	char *token = strtok(buf, ",");
+	if (token && strcmp(token, LORA_CMD_INTERVAL) == 0) {
+		char *type = strtok(NULL, ",");
+		if (type) {
+			if (strcmp(type, LORA_CMD_INTERVAL_HUM) == 0) return LORA_CMD_TYPE_INTERVAL_HUM;
+			if (strcmp(type, LORA_CMD_INTERVAL_TMP) == 0) return LORA_CMD_TYPE_INTERVAL_TMP;
+			if (strcmp(type, LORA_CMD_INTERVAL_GEO) == 0) return LORA_CMD_TYPE_INTERVAL_GEO;
+			if (strcmp(type, LORA_CMD_INTERVAL_STT) == 0) return LORA_CMD_TYPE_INTERVAL_STT;
+		}
+	}
+
     return LORA_CMD_TYPE_UNKNOWN;
 }
 
 /* Выполнение команды - устанавливает соответствующие флаги */
-lora_cmd_result_t lora_command_execute(lora_cmd_type_t cmd)
+lora_cmd_result_t lora_command_execute(lora_cmd_type_t cmd, const char *cmd_str)
 {
     switch (cmd) {
         case LORA_CMD_TYPE_SLEEP:
+            system_sleep_mode = true;
+            PRINTF("[CMD] Entering sleep mode (data transmission paused)\r\n");
+
             /* TODO: реализовать sleep режим STM32 (STOP mode) */
-            printf("[CMD] SLEEP requested - sleeping 3s\r\n");
+            PRINTF(" [CMD] SLEEP requested - sleeping 3s\r\n");
             HAL_Delay(3000);  /* Временная заглушка для тестов */
             return LORA_CMD_OK;
-            
+
+        case LORA_CMD_TYPE_WAKE:
+        	system_sleep_mode = false;
+			PRINTF("[CMD] Waking up\r\n");
+
+            /* TODO: реализовать wake-up STM32 (leave STOP mode) */\
+            /* Временная заглушка для тестов */
+            return LORA_CMD_OK;
+
+
+
+        case LORA_CMD_TYPE_INTERVAL_HUM:
+        {
+        	// Example: "interval,hum,30"
+            char buf[32];
+            strncpy(buf, cmd_str, sizeof(buf)-1);
+            buf[sizeof(buf)-1] = '\0';
+            strtok(buf, ",");  // "interval"
+            strtok(NULL, ","); // "hum"
+
+            char *sec_str = strtok(NULL, ","); // "30"
+			if (sec_str) {
+				uint32_t seconds = atoi(sec_str);
+				interval_set_hum(seconds);
+			}
+//            if (sec_str) {
+//                char *endptr;
+//                unsigned long seconds = strtoul(sec_str, &endptr, 10);
+//                if (*endptr == '\0') {  // если вся строка - это число
+//                    interval_set_hum((uint32_t)seconds);
+//                }
+//            }
+            return LORA_CMD_OK;
+        }
+        case LORA_CMD_TYPE_INTERVAL_TMP:
+        {
+            char buf[32];
+            strncpy(buf, cmd_str, sizeof(buf)-1);
+            buf[sizeof(buf)-1] = '\0';
+            strtok(buf, ",");
+            strtok(NULL, ",");
+
+            // TODO: strtoul по аналогии с LORA_CMD_TYPE_INTERVAL_HUM
+            char *sec_str = strtok(NULL, ",");
+            if (sec_str) {
+                uint32_t seconds = atoi(sec_str);
+                interval_set_tmp(seconds);
+            }
+            return LORA_CMD_OK;
+        }
+        case LORA_CMD_TYPE_INTERVAL_GEO:
+        {
+            char buf[32];
+            strncpy(buf, cmd_str, sizeof(buf)-1);
+            buf[sizeof(buf)-1] = '\0';
+            strtok(buf, ",");
+            strtok(NULL, ",");
+            char *sec_str = strtok(NULL, ",");
+            if (sec_str) {
+                uint32_t seconds = atoi(sec_str);
+                interval_set_gps(seconds);
+            }
+            return LORA_CMD_OK;
+        }
+        case LORA_CMD_TYPE_INTERVAL_STT:
+        {
+            char buf[32];
+            strncpy(buf, cmd_str, sizeof(buf)-1);
+            buf[sizeof(buf)-1] = '\0';
+            strtok(buf, ",");
+            strtok(NULL, ",");
+            char *sec_str = strtok(NULL, ",");
+            if (sec_str) {
+                uint32_t seconds = atoi(sec_str);
+                interval_set_stt(seconds);
+            }
+            return LORA_CMD_OK;
+        }
+
+
+
+        case LORA_CMD_TYPE_FORCE_ALL:
+            force_humidity = true;
+            force_temperature = true;
+            force_gps = true;
+            force_status = true;
+            PRINTF("[CMD] FORCE_ALL set\r\n");
+            return LORA_CMD_OK;
+
         case LORA_CMD_TYPE_FORCE_HUM:
-            lora_force_humidity = true;
-            printf("[CMD] FORCE_HUM set\r\n");
+            force_humidity = true;
+            PRINTF("[CMD] FORCE_HUM set\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_FORCE_TMP:
-            lora_force_temperature = true;
-            printf("[CMD] FORCE_TMP set\r\n");
+            force_temperature = true;
+            PRINTF("[CMD] FORCE_TMP set\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_FORCE_GEO:
-            lora_force_geo = true;
-            printf("[CMD] FORCE_GEO set\r\n");
+            force_gps = true;
+            PRINTF("[CMD] FORCE_GEO set\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_FORCE_STT:
-            lora_force_status = true;
-            printf("[CMD] FORCE_STT set\r\n");
+            force_status = true;
+            PRINTF("[CMD] FORCE_STT set\r\n");
             return LORA_CMD_OK;
-            
+
+
+
         case LORA_CMD_TYPE_HUM_ON:
             lora_enable_humidity = true;
-            printf("[CMD] HUM_ON\r\n");
+            PRINTF("[CMD] HUM_ON\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_HUM_OFF:
             lora_enable_humidity = false;
-            printf("[CMD] HUM_OFF\r\n");
+            PRINTF("[CMD] HUM_OFF\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_TMP_ON:
             lora_enable_temperature = true;
-            printf("[CMD] TMP_ON\r\n");
+            PRINTF("[CMD] TMP_ON\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_TMP_OFF:
             lora_enable_temperature = false;
-            printf("[CMD] TMP_OFF\r\n");
+            PRINTF("[CMD] TMP_OFF\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_GEO_ON:
-            lora_enable_geo = true;
-            printf("[CMD] GEO_ON\r\n");
+            lora_enable_gps = true;
+            PRINTF("[CMD] GEO_ON\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_GEO_OFF:
-            lora_enable_geo = false;
-            printf("[CMD] GEO_OFF\r\n");
+            lora_enable_gps = false;
+            PRINTF("[CMD] GEO_OFF\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_STT_ON:
             lora_enable_status = true;
-            printf("[CMD] STT_ON\r\n");
+            PRINTF("[CMD] STT_ON\r\n");
             return LORA_CMD_OK;
-            
+
         case LORA_CMD_TYPE_STT_OFF:
             lora_enable_status = false;
-            printf("[CMD] STT_OFF\r\n");
+            PRINTF("[CMD] STT_OFF\r\n");
             return LORA_CMD_OK;
-            
+
         default:
             return LORA_CMD_UNKNOWN;
     }
@@ -133,7 +258,7 @@ bool lora_command_process_payload(const char *payload, const char *local_node_id
     strncpy(buf, payload, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
     
-    /* Разбор по точке с запятой: device_id;timestamp;msg_rnd_id;type;data */
+    /* Разбор по точке с запятой: device_id;timestamp;msg_rnd_id;cmd_type;cmd_data */
     char *device_id = strtok(buf, ";");
     char *timestamp = strtok(NULL, ";");
     char *msg_rnd_id = strtok(NULL, ";");
@@ -144,21 +269,38 @@ bool lora_command_process_payload(const char *payload, const char *local_node_id
         return false;  /* неверный формат - недостаточно полей */
     }
     
+    /* Обработка служебных системных сообщений до остального */
+    if (strcmp(msg_type, LORA_MSG_JOIN) == 0 || strcmp(msg_type, LORA_MSG_JOIN_ACK) == 0) {
+        // Вызовите join-обработчик (payload — это ВСЯ строка)
+        lora_join_result_t result = lora_join_process_payload(payload);
+        if (result == LORA_JOIN_CONSUMED) {
+            // сообщения "съедены" (consumed), дальше не обрабатывать
+            return true;
+        }
+        if (result == LORA_JOIN_RETRANSMIT) {
+            if (retransmit_cb) {
+                // отправить ещё раз в LoRa-сеть
+                retransmit_cb((const uint8_t *)payload, strlen(payload));
+            }
+            return true;
+        }
+        // неуправляющее — обработка ниже
+    }
+
     /* Команды приходят как "cmd" тип, data содержит саму команду */
     if (strcmp(device_id, local_node_id) == 0) {
-        /* Пакет для нас - обрабатываем команды */
+        // Команда для нас
         if (strcmp(msg_type, LORA_MSG_CMD) == 0 && msg_data) {
-            /* Парсим и выполняем команду */
             lora_cmd_type_t cmd = lora_command_parse(msg_data);
             if (cmd != LORA_CMD_TYPE_UNKNOWN) {
-                lora_command_execute(cmd);
+                lora_command_execute(cmd, msg_data);
             }
         }
         return true;
     }
     else {
         /* Чужой пакет - ретранслируем */
-        printf("[ECHO] Retransmit from %s\r\n", device_id);
+        PRINTF("[LoRa ECHO] Retransmit from %s\r\n", device_id);
         
         if (retransmit_cb) {
             /* Добавляем в TX очередь для ретрансляции */
@@ -167,4 +309,6 @@ bool lora_command_process_payload(const char *payload, const char *local_node_id
         
         return true;
     }
+
+    return false;
 }

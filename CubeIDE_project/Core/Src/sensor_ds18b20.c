@@ -1,8 +1,13 @@
-#include "sensor_ds18b20.h"
+#include <string.h>
+#include <stdbool.h>
+#include <stdio.h>
+
 #include "main.h"
 #include "gpio.h"
-#include <string.h>
 #include "core_cm4.h"  /* Для DWT регистров */
+
+#include "printf.h"
+#include "sensor_ds18b20.h"
 
 /* Конфигурация пина DS18B20 - PA6 */
 #define DS18B20_PORT     GPIOA
@@ -19,36 +24,17 @@
 #define DS18B20_READ_SETUP_US       6
 #define DS18B20_READ_SAMPLE_US      9
 
-/* Состояния модуля */
-typedef enum {
-    DS18B20_IDLE = 0,      /* ожидание */
-    DS18B20_RESET,         /* сброс шины */
-    DS18B20_WRITING,       /* запись команд */
-    DS18B20_CONVERTING,    /* конвертация температуры */
-    DS18B20_READING,       /* чтение данных */
-    DS18B20_DONE          /* завершено */
-} ds18b20_state_t;
-
-typedef enum {
-    DS18B20_STEP_RESET = 0,     /* шаг сброса */
-    DS18B20_STEP_SKIP_ROM,      /* пропустить ROM */
-    DS18B20_STEP_CONVERT,       /* конвертировать температуру */
-    DS18B20_STEP_DELAY,         /* задержка конвертации */
-    DS18B20_STEP_READ_RESET,    /* сброс перед чтением */
-    DS18B20_STEP_READ_SKIP,     /* пропустить ROM перед чтением */
-    DS18B20_STEP_READ_CMD,      /* команда чтения */
-    DS18B20_STEP_READ_DATA      /* чтение данных */
-} ds18b20_step_t;
-
-static ds18b20_state_t state = DS18B20_IDLE;
-static ds18b20_step_t step = DS18B20_STEP_RESET;
-static sensor_reading_t current_reading = {0};
+/* State machine variables */
+volatile ds18b20_state_t ds18b20_state = DS18B20_STATE_IDLE;
+volatile uint32_t ds18b20_state_start_ms = 0;
+volatile bool ds18b20_busy = false;
+volatile bool ds18b20_result_ready = false;
+sensor_reading_t ds18b20_result = {0};
 static sensor_history_t history = {0};
-static uint32_t convert_start_time = 0;
+
+/* Internal variables for OneWire protocol */
 static uint8_t scratchpad[9] = {0};
 static uint8_t byte_idx = 0;
-static uint8_t bit_idx = 0;
-static uint8_t current_byte = 0;
 
 /* Точная задержка в микросекундах через DWT */
 static void delay_us(uint32_t us)
@@ -174,23 +160,12 @@ static uint8_t ds18b20_reset(void)
     return presence;
 }
 
-/* Заглушки power gating */
-void ds18b20_power_on(void)
-{
-    /* Заглушка */
-}
-
-void ds18b20_power_off(void)
-{
-    /* Заглушка */
-}
-
 /* Инициализация датчика */
 int ds18b20_init(void)
 {
-    state = DS18B20_IDLE;
-    step = DS18B20_STEP_RESET;
-    memset(&current_reading, 0, sizeof(current_reading));
+    ds18b20_state = DS18B20_STATE_IDLE;
+    ds18b20_result.valid = 0;
+    ds18b20_result.error = SENSOR_OK;
     memset(&history, 0, sizeof(history));
     
     /* Инициализация пина в режиме входа (высокий импеданс) */
@@ -199,146 +174,159 @@ int ds18b20_init(void)
     return SENSOR_OK;
 }
 
-/* Запуск измерения */
-int ds18b20_start(void)
+/* Запуск измерения (internal) */
+static int ds18b20_start(void)
 {
-    if (state != DS18B20_IDLE) {
-        return -1;
+    /* Сброс шины */
+    if (!ds18b20_reset()) {
+        return SENSOR_ERR_HW;
     }
     
-    state = DS18B20_RESET;
-    step = DS18B20_STEP_RESET;
+    /* Запись команды SKIP_ROM */
+    ds18b20_set_output();
+    ds18b20_write_byte(DS18B20_CMD_SKIP_ROM);
+    
+    /* Запись команды CONVERT_T */
+    ds18b20_write_byte(DS18B20_CMD_CONVERT_T);
+    
     return SENSOR_OK;
 }
 
-/* Проверка состояния измерения */
-int ds18b20_poll(void)
+/* Проверка завершения конвертации (internal) */
+static int ds18b20_poll(void)
 {
-    switch (state) {
-        case DS18B20_IDLE:
-            return 1;
-            
-        case DS18B20_RESET:
-            if (!ds18b20_reset()) {
-                current_reading.error = SENSOR_ERR_HW;
-                current_reading.value = -500.0f;
-                current_reading.valid = 0;
-                state = DS18B20_IDLE;
-                return SENSOR_ERR_HW;
-            }
-            state = DS18B20_WRITING;
-            step = DS18B20_STEP_SKIP_ROM;
-            byte_idx = 0;
-            bit_idx = 0;
-            current_byte = 0;
-            return 0;
-            
-        case DS18B20_WRITING:
-            ds18b20_set_output();
-            
-            switch (step) {
-                case DS18B20_STEP_SKIP_ROM:
-                    ds18b20_write_byte(DS18B20_CMD_SKIP_ROM);
-                    step = DS18B20_STEP_CONVERT;
-                    return 0;
-                    
-                case DS18B20_STEP_CONVERT:
-                    ds18b20_write_byte(DS18B20_CMD_CONVERT_T);
-                    state = DS18B20_CONVERTING;
-                    convert_start_time = HAL_GetTick();
-                    return 0;
-                    
-                default:
-                    break;
-            }
-            return 0;
-            
-        case DS18B20_CONVERTING:
-            /* Проверка времени конвертации (неблокирующее ожидание) */
-            if (HAL_GetTick() - convert_start_time < DS18B20_CONV_TIME_MS) {
-                return 0;  /* Все еще конвертирует */
-            }
-            
-            /* Начало фазы чтения */
-            state = DS18B20_READING;
-            step = DS18B20_STEP_READ_RESET;
-            byte_idx = 0;
-            return 0;
-            
-        case DS18B20_READING:
-            switch (step) {
-                case DS18B20_STEP_READ_RESET:
-                    if (!ds18b20_reset()) {
-                        current_reading.error = SENSOR_ERR_HW;
-                        current_reading.value = -500.0f;
-                        current_reading.valid = 0;
-                        state = DS18B20_IDLE;
-                        return SENSOR_ERR_HW;
-                    }
-                    step = DS18B20_STEP_READ_SKIP;
-                    return 0;
-                    
-                case DS18B20_STEP_READ_SKIP:
-                    ds18b20_set_output();
-                    ds18b20_write_byte(DS18B20_CMD_SKIP_ROM);
-                    step = DS18B20_STEP_READ_CMD;
-                    return 0;
-                    
-                case DS18B20_STEP_READ_CMD:
-                    ds18b20_write_byte(DS18B20_CMD_READ_SCRATCHPAD);
-                    step = DS18B20_STEP_READ_DATA;
-                    byte_idx = 0;
-                    return 0;
-                    
-                case DS18B20_STEP_READ_DATA:
-                    if (byte_idx < 9) {
-                        ds18b20_set_input();
-                        scratchpad[byte_idx] = ds18b20_read_byte();
-                        byte_idx++;
-                        return 0;
-                    }
-                    
-                    /* Парсинг температуры */
-                    int16_t raw_temp = (int16_t)(scratchpad[1] << 8) | scratchpad[0];
-                    float temp_c = (float)raw_temp / 16.0f;
-                    
-                    current_reading.value = temp_c;
-                    current_reading.raw = (uint16_t)raw_temp;
-                    current_reading.valid = 1;
-                    current_reading.error = SENSOR_OK;
-                    current_reading.timestamp = HAL_GetTick() / 1000;
-                    
-                    sensor_history_add(&history, &current_reading);
-                    
-                    state = DS18B20_DONE;
-                    return 1;
-                    
-                default:
-                    break;
-            }
-            return 0;
-            
-        case DS18B20_DONE:
-            return 1;
-            
-        default:
-            state = DS18B20_IDLE;
-            return -1;
+    /* Проверка завершения конвертации */
+    ds18b20_set_input();
+    uint8_t bit = ds18b20_read_bit();
+    
+    /* Если бит = 0, конвертация еще идет */
+    if (bit == 0) {
+        return 0;
     }
+    
+    return 1;  /* Конвертация завершена */
 }
 
-/* Получение результата */
-int ds18b20_get(sensor_reading_t *out)
+/* Чтение scratchpad (internal) */
+static int ds18b20_read_scratchpad(void)
 {
-    if (!out) return -1;
-    
-    *out = current_reading;
-    
-    if (state == DS18B20_DONE) {
-        state = DS18B20_IDLE;
+    /* Сброс шины */
+    if (!ds18b20_reset()) {
+        return SENSOR_ERR_HW;
     }
     
-    return current_reading.valid ? SENSOR_OK : current_reading.error;
+    /* Запись команды SKIP_ROM */
+    ds18b20_set_output();
+    ds18b20_write_byte(DS18B20_CMD_SKIP_ROM);
+    
+    /* Запись команды READ_SCRATCHPAD */
+    ds18b20_write_byte(DS18B20_CMD_READ_SCRATCHPAD);
+    
+    /* Чтение 9 байт scratchpad */
+    ds18b20_set_input();
+    for (byte_idx = 0; byte_idx < 9; byte_idx++) {
+        scratchpad[byte_idx] = ds18b20_read_byte();
+    }
+    
+    /* Парсинг температуры */
+    int16_t raw_temp = (int16_t)(scratchpad[1] << 8) | scratchpad[0];
+    float temp_c = (float)raw_temp / 16.0f;
+    
+    ds18b20_result.value = temp_c;
+    ds18b20_result.raw = (uint16_t)raw_temp;
+    ds18b20_result.valid = 1;
+    ds18b20_result.error = SENSOR_OK;
+    ds18b20_result.timestamp = HAL_GetTick() / 1000;
+    
+    return SENSOR_OK;
+}
+
+/* Получение результата (internal) */
+static int ds18b20_get(sensor_reading_t *out)
+{
+    if (!out) return -1;
+    *out = ds18b20_result;
+    return ds18b20_result.valid ? SENSOR_OK : ds18b20_result.error;
+}
+
+/* Request measurement - non-blocking */
+int ds18b20_request_measurement(void)
+{
+    if (ds18b20_busy) {
+        return -1;  /* Busy */
+    }
+    ds18b20_busy = true;
+    ds18b20_result_ready = false;
+    ds18b20_state = DS18B20_STATE_START_CONVERSION;
+    ds18b20_state_start_ms = HAL_GetTick();
+    return 0;
+}
+
+/* Get last result - non-blocking */
+int ds18b20_get_result(sensor_reading_t *out)
+{
+    if (!ds18b20_result_ready || !out) {
+        return -1;
+    }
+    *out = ds18b20_result;
+    ds18b20_result_ready = false;
+    return 0;
+}
+
+/* State machine tick - call every main loop iteration */
+void ds18b20_tick(void)
+{
+    uint32_t now = HAL_GetTick();
+    
+    switch (ds18b20_state) {
+        case DS18B20_STATE_IDLE:
+            /* Do nothing, wait for request */
+            break;
+            
+        case DS18B20_STATE_START_CONVERSION:
+            if (ds18b20_start() != SENSOR_OK) {
+                ds18b20_result.value = DS18B20_ERROR_VALUE;
+                ds18b20_result.valid = 0;
+                ds18b20_result.error = SENSOR_ERR_HW;
+                ds18b20_state = DS18B20_STATE_ERROR;
+            } else {
+                ds18b20_state = DS18B20_STATE_WAIT_CONVERSION;
+                ds18b20_state_start_ms = now;
+            }
+            break;
+            
+        case DS18B20_STATE_WAIT_CONVERSION:
+            if (ds18b20_poll()) {
+                ds18b20_state = DS18B20_STATE_READ_SCRATCHPAD;
+            }
+            else if (now - ds18b20_state_start_ms > DS18B20_CONVERSION_TIMEOUT_MS) {
+                ds18b20_result.value = DS18B20_ERROR_VALUE;
+                ds18b20_result.valid = 0;
+                ds18b20_result.error = SENSOR_ERR_TIMEOUT;
+                ds18b20_state = DS18B20_STATE_ERROR;
+            }
+            break;
+            
+        case DS18B20_STATE_READ_SCRATCHPAD:
+            if (ds18b20_read_scratchpad() == SENSOR_OK) {
+                ds18b20_result_ready = true;
+                ds18b20_busy = false;
+                ds18b20_state = DS18B20_STATE_IDLE;
+            } else {
+                ds18b20_result.value = DS18B20_ERROR_VALUE;
+                ds18b20_result.valid = 0;
+                ds18b20_result.error = SENSOR_ERR_HW;
+                ds18b20_state = DS18B20_STATE_ERROR;
+            }
+            break;
+            
+        case DS18B20_STATE_ERROR:
+            ds18b20_result_ready = true;
+            ds18b20_busy = false;
+            ds18b20_state = DS18B20_STATE_IDLE;
+            break;
+    }
+	PRINTF("ds18b20_result_ready - %d\r\n", ds18b20_result_ready);
 }
 
 /* Получение истории */

@@ -13,11 +13,22 @@
  * ============================================================================ */
 
 /* Типы команд от Hub */
-#define LORA_CMD_SLEEP      "SLEEP"
-#define LORA_CMD_FORCE_HUM  "FORCE_HUM"
-#define LORA_CMD_FORCE_TMP  "FORCE_TMP"
-#define LORA_CMD_FORCE_GEO  "FORCE_GEO"
-#define LORA_CMD_FORCE_STT  "FORCE_STT"
+#define LORA_CMD_SLEEP      "sleep"
+#define LORA_CMD_WAKE       "wake"
+
+#define LORA_CMD_INTERVAL     "interval"
+#define LORA_CMD_INTERVAL_HUM "hum"
+#define LORA_CMD_INTERVAL_TMP "tmp"
+#define LORA_CMD_INTERVAL_GEO "geo"
+#define LORA_CMD_INTERVAL_STT "stt"
+
+#define LORA_CMD_FORCE_ALL  "fetch"
+#define LORA_CMD_FORCE_HUM  "fetch_hum"
+#define LORA_CMD_FORCE_TMP  "fetch_tmp"
+#define LORA_CMD_FORCE_GEO  "fetch_geo"
+#define LORA_CMD_FORCE_STT  "fetch_stt"
+
+/* TODO: заготовки на будущее */
 #define LORA_CMD_HUM_ON     "HUM_ON"
 #define LORA_CMD_HUM_OFF    "HUM_OFF"
 #define LORA_CMD_TMP_ON     "TMP_ON"
@@ -30,11 +41,21 @@
 /* Тип команды как enum */
 typedef enum {
     LORA_CMD_TYPE_UNKNOWN = 0,
+
     LORA_CMD_TYPE_SLEEP,
+    LORA_CMD_TYPE_WAKE,
+
+    LORA_CMD_TYPE_INTERVAL_HUM,
+    LORA_CMD_TYPE_INTERVAL_TMP,
+    LORA_CMD_TYPE_INTERVAL_GEO,
+    LORA_CMD_TYPE_INTERVAL_STT,
+
+    LORA_CMD_TYPE_FORCE_ALL,
     LORA_CMD_TYPE_FORCE_HUM,
     LORA_CMD_TYPE_FORCE_TMP,
     LORA_CMD_TYPE_FORCE_GEO,
     LORA_CMD_TYPE_FORCE_STT,
+
     LORA_CMD_TYPE_HUM_ON,
     LORA_CMD_TYPE_HUM_OFF,
     LORA_CMD_TYPE_TMP_ON,
@@ -62,7 +83,7 @@ void lora_command_set_retransmit_callback(lora_retransmit_callback_t callback);
 lora_cmd_type_t lora_command_parse(const char *cmd_str);
 
 /* Выполнение команды */
-lora_cmd_result_t lora_command_execute(lora_cmd_type_t cmd);
+lora_cmd_result_t lora_command_execute(lora_cmd_type_t cmd, const char *cmd_str);
 
 /* Обработка полного payload (включая разбор device_id, проверку дубликатов, ретрансляцию) */
 /* Возвращает: true = обработано, false = пропущено (дубликат или ошибка формата) */

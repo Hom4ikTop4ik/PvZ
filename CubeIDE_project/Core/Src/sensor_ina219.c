@@ -1,22 +1,23 @@
-#include "sensor_ina219.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
+
 #include "i2c.h"
 #include "main.h"
-#include <string.h>
+
+#include "sensor_ina219.h"
+#include "printf.h"
 
 /* Внешний дескриптор I2C из i2c.c */
 extern I2C_HandleTypeDef hi2c1;
 
-/* Состояния модуля */
-typedef enum {
-    INA219_IDLE = 0,       /* ожидание */
-    INA219_MEASURING,      /* измерение */
-    INA219_DONE           /* завершено */
-} ina219_state_t;
-
-static ina219_state_t state = INA219_IDLE;
-static sensor_reading_t current_reading = {0};
+/* State machine variables */
+ina219_state_t ina219_state = INA219_STATE_IDLE;
+uint32_t ina219_state_start_ms = 0;
+bool ina219_busy = false;
+bool ina219_result_ready = false;
+sensor_reading_t ina219_result = {0};
 static sensor_history_t history = {0};
-static uint32_t start_time = 0;
 
 /* Приватные функции */
 /* Чтение регистра INA219 */
@@ -46,22 +47,12 @@ static int ina219_write_register(uint8_t reg, uint16_t value)
     return SENSOR_OK;
 }
 
-/* Заглушки power gating */
-void ina219_power_on(void)
-{
-    /* Заглушка */
-}
-
-void ina219_power_off(void)
-{
-    /* Заглушка */
-}
-
 /* Инициализация датчика */
 int ina219_init(void)
 {
-    state = INA219_IDLE;
-    memset(&current_reading, 0, sizeof(current_reading));
+    ina219_state = INA219_STATE_IDLE;
+    ina219_result.valid = 0;
+    ina219_result.error = SENSOR_OK;
     memset(&history, 0, sizeof(history));
     
     /* Конфигурация INA219 */
@@ -81,80 +72,131 @@ int ina219_init(void)
     return SENSOR_OK;
 }
 
-/* Запуск измерения */
-int ina219_start(void)
+/* Запуск измерения (internal) */
+static int ina219_start(void)
 {
-    if (state != INA219_IDLE) {
-        return -1;
-    }
-    
-    state = INA219_MEASURING;
-    start_time = HAL_GetTick();
+    /* No-op for INA219 - measurements are immediate */
     return SENSOR_OK;
 }
 
-/* Проверка состояния измерения */
-int ina219_poll(void)
+/* Проверка состояния измерения (internal) */
+static int ina219_poll(void)
 {
-    if (state == INA219_IDLE) {
-        return 1;
-    }
-    
-    if (state == INA219_MEASURING) {
-        uint16_t bus_voltage_reg;
-        
-        if (ina219_read_register(INA219_REG_BUS_VOLT, &bus_voltage_reg) != SENSOR_OK) {
-            current_reading.error = SENSOR_ERR_HW;
-            current_reading.value = -500.0f;
-            current_reading.valid = 0;
-            state = INA219_IDLE;
-            return SENSOR_ERR_HW;
-        }
-        
-        /* Извлечение напряжения (сдвиг на 3 бита вправо, умножение на 4мВ) */
-        uint16_t voltage_raw = bus_voltage_reg >> 3;
-        float voltage_v = (float)voltage_raw * 0.004f;
-        
-        /* Расчет процента заряда */
-        float voltage_mv = voltage_v * 1000.0f;
-        float percentage = 0.0f;
-        
-        if (voltage_mv >= BATTERY_MAX_VOLTAGE_MV) {
-            percentage = 100.0f;
-        } else if (voltage_mv <= BATTERY_MIN_VOLTAGE_MV) {
-            percentage = 0.0f;
-        } else {
-            percentage = 100.0f * (voltage_mv - BATTERY_MIN_VOLTAGE_MV) / 
-                        (BATTERY_MAX_VOLTAGE_MV - BATTERY_MIN_VOLTAGE_MV);
-        }
-        
-        current_reading.value = percentage;  /* Сохраняем процент */
-        current_reading.raw = voltage_raw;
-        current_reading.valid = 1;
-        current_reading.error = SENSOR_OK;
-        current_reading.timestamp = HAL_GetTick() / 1000;
-        
-        sensor_history_add(&history, &current_reading);
-        
-        state = INA219_DONE;
-        return 1;
-    }
-    
+    /* No-op for INA219 - measurements are immediate */
     return 1;
 }
 
-/* Получение результата */
-int ina219_get(sensor_reading_t *out)
+/* Чтение тока (internal) */
+static int ina219_read_current(float *current)
 {
-    if (!out) return -1;
+    uint16_t current_reg;
     
-    *out = current_reading;
-    
-    if (state == INA219_DONE) {
-        state = INA219_IDLE;
+    if (ina219_read_register(INA219_REG_CURRENT, &current_reg) != SENSOR_OK) {
+        return SENSOR_ERR_HW;
     }
     
-    return current_reading.valid ? SENSOR_OK : current_reading.error;
+    *current = (float)current_reg * 0.0001f;  /* Current_LSB = 0.0001 A/bit */
+    return SENSOR_OK;
+}
+
+/* Получение результата (internal) */
+static int ina219_get(sensor_reading_t *out)
+{
+    if (!out) return -1;
+    *out = ina219_result;
+    return ina219_result.valid ? SENSOR_OK : ina219_result.error;
+}
+
+/* Request measurement - non-blocking */
+int ina219_request_measurement(void)
+{
+    if (ina219_busy) {
+        return -1;  /* Busy */
+    }
+    ina219_busy = true;
+    ina219_result_ready = false;
+    ina219_state = INA219_STATE_READ_VOLTAGE;
+    ina219_state_start_ms = HAL_GetTick();
+    return 0;
+}
+
+/* Get last result - non-blocking */
+int ina219_get_result(sensor_reading_t *out)
+{
+    if (!ina219_result_ready || !out) {
+        return -1;
+    }
+    *out = ina219_result;
+    ina219_result_ready = false;
+    return 0;
+}
+
+/* State machine tick - call every main loop iteration */
+void ina219_tick(void)
+{
+    switch (ina219_state) {
+        case INA219_STATE_IDLE:
+            /* Do nothing, wait for request */
+            break;
+            
+        case INA219_STATE_READ_VOLTAGE:
+            {
+                float voltage;
+                if (ina219_read_voltage(&voltage) == SENSOR_OK) {
+                    /* Calculate battery percentage */
+                    float voltage_mv = voltage * 1000.0f;
+                    float percentage = 0.0f;
+                    
+                    if (voltage_mv >= BATTERY_MAX_VOLTAGE_MV) {
+                        percentage = 100.0f;
+                    } else if (voltage_mv <= BATTERY_MIN_VOLTAGE_MV) {
+                        percentage = 0.0f;
+                    } else {
+                        percentage = 100.0f * (voltage_mv - BATTERY_MIN_VOLTAGE_MV) / 
+                                    (BATTERY_MAX_VOLTAGE_MV - BATTERY_MIN_VOLTAGE_MV);
+                    }
+                    
+                    ina219_result.value = percentage;
+                    ina219_result.raw = (uint16_t)(voltage_mv / 4.0f);  /* Store raw voltage */
+                    ina219_state = INA219_STATE_READ_CURRENT;
+                } else {
+                    ina219_result.value = INA219_ERROR_VOLTAGE;
+                    ina219_result.valid = 0;
+                    ina219_result.error = SENSOR_ERR_HW;
+                    ina219_state = INA219_STATE_ERROR;
+                }
+            }
+            break;
+            
+        case INA219_STATE_READ_CURRENT:
+            {
+                float current;
+                if (ina219_read_current(&current) == SENSOR_OK) {
+                    ina219_result.valid = 1;
+                    ina219_result.error = SENSOR_OK;
+                    ina219_result.timestamp = HAL_GetTick() / 1000;
+                    ina219_result_ready = true;
+                    ina219_busy = false;
+                    ina219_state = INA219_STATE_IDLE;
+                } else {
+                    /* Voltage was read successfully, but current failed - still return partial result */
+                    ina219_result.valid = 1;
+                    ina219_result.error = SENSOR_ERR_HW;
+                    ina219_result.timestamp = HAL_GetTick() / 1000;
+                    ina219_result_ready = true;
+                    ina219_busy = false;
+                    ina219_state = INA219_STATE_IDLE;
+                }
+            }
+            break;
+            
+        case INA219_STATE_ERROR:
+            ina219_result_ready = true;
+            ina219_busy = false;
+            ina219_state = INA219_STATE_IDLE;
+            break;
+    }
+	PRINTF("ina219_result_ready - %d\r\n", ina219_result_ready);
 }
 
 /* Получение истории */
@@ -171,15 +213,19 @@ void ina219_clear_history(void)
     memset(&history, 0, sizeof(history));
 }
 
-/* Прямое чтение напряжения батареи */
-float ina219_read_voltage(void)
+/* Прямое чтение напряжения батареи - public function for measure_state() */
+int ina219_read_voltage(float *voltage)
 {
+    if (!voltage) return -1;
+    
     uint16_t bus_voltage_reg;
     
     if (ina219_read_register(INA219_REG_BUS_VOLT, &bus_voltage_reg) != SENSOR_OK) {
-        return -1.0f;
+        return -1;
     }
     
     uint16_t voltage_raw = bus_voltage_reg >> 3;
-    return (float)voltage_raw * 0.004f;
+    *voltage = (float)voltage_raw * 0.004f;
+    return 0;
 }
+

@@ -50,6 +50,24 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    Core/Src/sensor_hw390.c
+    Core/Src/sensor_ds18b20.c
+    Core/Src/sensor_ina219.c
+    Core/Src/lora_app.c
+    Core/Src/lora_command.c
+    Core/Src/lora_driver.c
+    Core/Src/lora_history.c
+    Core/Src/lora_identity.c
+    Core/Src/lora_join.c
+    Core/Src/lora_packet.c
+    Core/Src/lora_queue.c
+    Core/Src/gps_config_sweep.c
+    Core/Src/gps_nmea.c
+    Core/Src/hw390_flash.c
+    Core/Src/gps_time.c
+    Core/Src/utils.c
+    Core/Src/interval.c
+    Core/Src/interval_flash.c
 )
 
 if(GPS_ONLY)

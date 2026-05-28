@@ -10,7 +10,7 @@ typedef enum {
 } lora_join_result_t;
 
 void lora_join_init(void);
-void lora_join_process_tick(lora_queue_t *tx_queue);
+void lora_join_tick(void);
 lora_join_result_t lora_join_process_payload(const char *payload);
 
 #endif /* LORA_JOIN_H */

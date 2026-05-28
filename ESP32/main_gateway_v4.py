@@ -25,14 +25,14 @@ button = machine.Pin(config_ga.PIN_BUTTON, machine.Pin.IN, machine.Pin.PULL_UP)
 settings = gateway_settings.load_settings(config_ga.TENANT, config_ga.WIFI_SSID, config_ga.WIFI_PASS)
 active_settings = gateway_settings.apply_settings(config_ga, settings)
 print("[CONFIG] Tenant:", active_settings["tenant"])
-print("[CONFIG] Wi-Fi SSID:", active_settings["wifi_ssid"])
-
+print("[CONFIG] Wi-Fi SSID:", active_settings["wifi_ssid"], active_settings["wifi_pass"])
 
 def config_portal_requested(
     window_ms=config_ga.CONFIG_PORTAL_BOOT_WINDOW_MS,
     hold_ms=config_ga.CONFIG_PORTAL_BOOT_HOLD_MS,
 ):
     print("[CONFIG] Hold BOOT now to open config portal...")
+    led.value(0) # вкл светодиод — показать, что шлюз ждёт зажатие кнопку
     start = time.ticks_ms()
     held_since = None
 
@@ -49,6 +49,8 @@ def config_portal_requested(
         else:
             held_since = None
             time.sleep_ms(50)
+    
+    led.value(1) # выкл светодиод
 
     return False
 
@@ -62,15 +64,8 @@ if config_portal_requested():
 
 # Глобальный клиент
 mqtt_client = None
-
-# Инициализация LoRa
-print("Init LoRa...")
-lora = LoRaMiniLib(config_ga)
-print("LoRa OK")
-
-# Основной цикл
-print("Start main loop...")
-print("-" * 50)
+# Глобальная lora
+lora = None
 
 seq_num = 0
 history = RingBuffer(max_size=config_ga.HISTORY_SIZE)
@@ -128,7 +123,26 @@ def connect_wifi(max_wait_s=30):
             1002: "STAT_CONNECTING",
             1010: "STAT_GOT_IP",
         }
+        
+        # connection - version 1
+        # max_wait = 20
+        # while max_wait > 0:
+        #     status = wlan.status()
+        #     print(f"    {status}")
+        #         break
+        #     max_wait -= 1
+        #     time.sleep(1)
 
+        # connection - version 2
+        # last_time = time.time()
+        # while not wlan.isconnected():
+        #     if (time.time() - last_time) >= 1.0:
+        #         status = wlan.status()
+        #         print(f"WLAN.status: {status} - {status_codes[status]}")
+        #         last_time = time.time()
+        #     machine.idle()
+
+        # connection - version 3
         for _ in range(max_wait_s):
             status = wlan.status()
             print("[WIFI]", status_codes.get(status, status))
@@ -136,6 +150,7 @@ def connect_wifi(max_wait_s=30):
                 break
             time.sleep(1)
 
+            
     if wlan.isconnected():
         print(f"[WIFI] Connected! IP: {wlan.ifconfig()[0]}")
         return True
@@ -160,16 +175,17 @@ def send_command(cmd, *params, device_id=None, timestamp=None) -> bool:
     if not timestamp:
         timestamp = get_iso_timestamp()
     msg_rnd_id = random.randint(0, 999_999)
-    # даже если params пусто, оставить пустым: 
-    #   "{cmd}," чтобы единообразный формат был
-    payload = f"{device_id};{timestamp};{msg_rnd_id};cmd;{cmd},{','.join(map(str, params))}"
+    payload = f"{device_id};{timestamp};{msg_rnd_id};cmd;{cmd}"
+    if params:
+        payload += f",{','.join(map(str, params))}"
+
     return _enqueue_payload(payload)
 
 
-def send_join_ack(mac, request_rnd, node_id):
+def send_join_ack(mac, node_id):
     timestamp = get_iso_timestamp()
     msg_rnd_id = random.randint(0, 999_999)
-    payload = f"0;{timestamp};{msg_rnd_id};join_ack;{mac},{request_rnd},{node_id}"
+    payload = f"0;{timestamp};{msg_rnd_id};join_ack;{mac},{node_id}"
     if _enqueue_payload(payload):
         print(f"[JOIN] ACK queued: mac={mac} node_id={node_id}")
         return True
@@ -190,7 +206,7 @@ def handle_join_request(device_id, timestamp, msg_rnd_id, msg):
         return True
 
     print(f"[JOIN] Request mac={mac} rnd={msg_rnd_id} -> node_id={node_id}")
-    send_join_ack(mac, msg_rnd_id, node_id)
+    send_join_ack(mac, node_id)
     return True
 
 
@@ -207,7 +223,6 @@ def on_message_received(topic, msg):
         print(f"[MQTT RX] Payload: {msg_str}")
         
         # 1. Разбираем топик: {env}/{tenant}/devices/{device_id}/command
-        # 1. Разбираем топик: {env}/{tenant}/sensors/{device_id}/command
         parts = topic_str.split('/')
         # Проверяем структуру
         if len(parts) == 5 and parts[-1] == 'command':
@@ -277,6 +292,7 @@ def ensure_mqtt():
             mqtt_client = None
     
     # Переподключаемся
+    # (цикл вечный, потому что без него нет смысла слушать LoRa и запоминать сообщения — RAM закончится)
     print("[MQTT] Reconnecting...")
     led.value(0)
     while True:
@@ -318,7 +334,7 @@ def do_payload(payload):
     
     # Проверяем MQTT
     if not ensure_mqtt():
-        print("[WARN] No MQTT, skipping")
+        print("[WARN] No MQTT: skip parsing LoRa msg  and  skip gateway->MQTT sending")
         return
     
     try:
@@ -356,7 +372,7 @@ def do_payload(payload):
             mqtt_client.publish(topic_temp, payload_temp)
             seq_num += 1
             print(f"[TX] {topic_temp} -> {payload_temp}")
-        elif msg_type == "geo":
+        elif msg_type == "gps":
             # --- 3. Геопозиция (Location) ---
             # Топик: dev/test/sensors/node-01/location
             topic_loc = f"{config_ga.TOPIC_PUB_PREFIX}/{device_id}/location"
@@ -394,9 +410,25 @@ def do_payload(payload):
 def main():
     global mqtt_client, history, seq_num, lora, led, button
 
+    # Основной цикл
+    print("\n\nStart main loop...")
+    print("-" * 50)
+
     while True:
         try:
-            # Всегда читаем входящие данные
+            # 1. Проверяем входящие MQTT
+            if mqtt_client:
+                try:
+                    mqtt_client.check_msg()
+                except Exception as e:
+                    mqtt_client = None # требуем переподключение
+                    print(f"    [MQTT] check_msg error: {repr(e)}")
+            
+            # Переподключаемся, если требуется
+            if mqtt_client is None:
+                ensure_mqtt()  # Автовосстановление сразу при разрыве
+                    
+            # 2. Всегда читаем входящие данные
             received = lora.receive_bytes()
 
             if received:
@@ -416,7 +448,7 @@ def main():
                 except Exception as e:
                     print(f"Error: {e}")
             
-
+            # 3. Отправляем в LoRa эфир сообщения, если надо и есть возможность
             result, msg = lora_tx_pump(lora, tx_queue, config_ga.LORA_TX_MIN_INTERVAL_MS)
             if result == "sent":
                 print(f"sent: {msg}")
@@ -428,14 +460,18 @@ def main():
             sys.exit(0)
         except Exception as e:
             print(f"Error: {e}")
+            print(f"Error: {repr(e)}")
             time.sleep_ms(500)
 
 if __name__ == "__main__":
-    led.value(0)
-
     if not connect_wifi():
         print("[WIFI] Connection failed; opening config portal")
         gateway_config_portal.run_config_portal(active_settings)
+
+    # Инициализация LoRa
+    print("Init LoRa...")
+    lora = LoRaMiniLib(config_ga)
+    print("LoRa OK")
 
     for i in range(3):
         try:
@@ -449,5 +485,6 @@ if __name__ == "__main__":
         if mqtt_client:
             break
         time.sleep(2)
+
     led.value(1)
     main()

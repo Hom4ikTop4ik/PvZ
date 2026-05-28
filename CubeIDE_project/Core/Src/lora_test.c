@@ -37,7 +37,7 @@ void send_lora_message(void)
 
     // ДЛЯ МОДУЛЯ E22: дождаться готовности (AUX = 1)
     if (!wait_lora_ready(100)) {
-        printf("[LoRa TEST] AUX не готов, пропуск отправки смс\r\n");
+        PRINTF("[LoRa TEST] AUX не готов, пропуск отправки смс\r\n");
         return;
     }
 
@@ -45,8 +45,8 @@ void send_lora_message(void)
     HAL_StatusTypeDef res = HAL_UART_Transmit(&huart1, (uint8_t*)msg, len, 500);
 
     if (res == HAL_OK) {
-        printf("[LoRa TEST] Сообщение отправлено: %s\r\n", msg);
+        PRINTF("[LoRa TEST] Сообщение отправлено: %s\r\n", msg);
     } else {
-        printf("[LoRa TEST] Ошибка отправки! res=%d\r\n", res);
+        PRINTF("[LoRa TEST] Ошибка отправки! res=%d\r\n", res);
     }
 }

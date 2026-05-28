@@ -1,4 +1,5 @@
 #include "lora_driver.h"
+#include "sensor_common.h"
 #include "usart.h"
 #include "gpio.h"
 #include <string.h>
@@ -188,34 +189,34 @@ lora_result_t lora_driver_exit_at_mode(void)
  * AT Commands - БАЗОВАЯ РЕАЛИЗАЦИЯ
  * ============================================================================
  * TODO: Текущая реализация читает только ОДНУ строку ответа.
- * 
+ *
  * Проблема: E22 может отвечать несколькими строками:
- *   - Обычный ответ: "OK\r\n" 
+ *   - Обычный ответ: "OK\r\n"
  *   - Ответ с данными: "+DATA\r\nOK\r\n"
  *   - Ошибка: "ERR\r\n"
- * 
+ *
  * Для production нужен multi-line parser, который:
  *   1. Читает строки до пустой строки или OK/ERR
  *   2. Сохраняет все строки в буфер
  *   3. Парсит результаты
- * 
+ *
  * Для первых тестов LoRa модуль уже настроен из ESP32 проекта.
  * Перенастройка через AT не требуется - используем существующую конфигурацию.
- * 
+ *
  * Если потребуется переконфигурировать модуль - расширить эту функцию
  * для чтения multi-line ответов.
  * ============================================================================ */
 lora_result_t lora_driver_at_command(const char *cmd, char *response, uint16_t resp_len)
 {
     if (!cmd) return LORA_ERR_SEND;
-    
+
     /* Отправка команды */
     HAL_UART_Transmit(&hlpuart1, (uint8_t *)cmd, strlen(cmd), 500);
-    
+
     /* CR+LF */
     uint8_t crlf[] = "\r\n";
     HAL_UART_Transmit(&hlpuart1, crlf, 2, 100);
-    
+
     /* Чтение ответа (только одна строка - см. TODO выше) */
     if (response && resp_len > 0) {
         uint16_t len;
@@ -223,6 +224,156 @@ lora_result_t lora_driver_at_command(const char *cmd, char *response, uint16_t r
             return LORA_ERR_TIMEOUT;
         }
     }
-    
+
     return LORA_OK;
+}
+
+/* ============================================================================
+ * Config Mode and RSSI Reading
+ * ============================================================================
+ * M0/M1 control for mode switching and RSSI reading via register commands
+ * ============================================================================ */
+
+/* Set LoRa mode via M0/M1 pins */
+/* Mode 0: Normal (M0=0, M1=0) */
+/* Mode 1: Wake-up (M0=1, M1=0) */
+/* Mode 2: Power-saving/Config (M0=0, M1=1) */
+/* Mode 3: Sleep (M0=1, M1=1) */
+void lora_driver_set_mode(uint8_t mode)
+{
+    GPIO_PinState m0_state = GPIO_PIN_RESET;
+    GPIO_PinState m1_state = GPIO_PIN_RESET;
+
+    switch (mode) {
+        case 0: /* Normal mode */
+            m0_state = GPIO_PIN_RESET;
+            m1_state = GPIO_PIN_RESET;
+            break;
+        case 1: /* Wake-up mode */
+            m0_state = GPIO_PIN_SET;
+            m1_state = GPIO_PIN_RESET;
+            break;
+        case 2: /* Power-saving/Config mode */
+            m0_state = GPIO_PIN_RESET;
+            m1_state = GPIO_PIN_SET;
+            break;
+        case 3: /* Sleep mode */
+            m0_state = GPIO_PIN_SET;
+            m1_state = GPIO_PIN_SET;
+            break;
+        default:
+            break;
+    }
+
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, m0_state);  /* LORA_M0 */
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, m1_state);  /* LORA_M1 */
+
+    /* Small delay for mode switch */
+    HAL_Delay(10);
+}
+
+/* Read RSSI from LoRa module (requires config mode) */
+/* ambient=true: read ambient noise RSSI (register 0x00) */
+/* ambient=false: read last packet RSSI (register 0x01) */
+/* Returns RSSI in dBm (negative value), or 0 on error */
+int16_t lora_driver_read_rssi(bool ambient)
+{
+    uint8_t cmd[6] = {0xC0, 0xC1, 0xC2, 0xC3, 0x00, 0x01};  /* Read ambient RSSI */
+    uint8_t response[8] = {0};
+    uint16_t len = 0;
+
+    if (!ambient) {
+        cmd[4] = 0x01;  /* Read packet RSSI */
+    }
+
+    /* Switch to config mode (mode 2) */
+    lora_driver_set_mode(2);
+
+    /* Send RSSI read command */
+    if (HAL_UART_Transmit(&hlpuart1, cmd, sizeof(cmd), 100) != HAL_OK) {
+        lora_driver_set_mode(0);  /* Restore normal mode */
+        return STATE_ERROR_RSSI;
+    }
+
+    /* Read response (C1 + address + length + value) */
+    /* Expected response: C1 00 01 <value> */
+    if (!lora_driver_read_line(response, sizeof(response), &len)) {
+        lora_driver_set_mode(0);  /* Restore normal mode */
+        return STATE_ERROR_RSSI;
+    }
+
+    /* Restore normal mode */
+    lora_driver_set_mode(0);
+
+    /* Parse response: C1 00 01 <value> */
+    if (len >= 4 && response[0] == 0xC1 && response[1] == (ambient ? 0x00 : 0x01) && response[2] == 0x01) {
+        uint8_t rssi_raw = response[3];
+        /* dBm = rssi_raw / 2 (negative) */
+        return -(int8_t)(rssi_raw / 2);
+    }
+
+    return STATE_ERROR_RSSI;
+}
+
+/**
+ * @brief  Считывает шум и RSSI пакета за один запрос. Вычисляет целое RSSI и дробное SNR.
+ * @param  out_rssi_packet: Указатель на RSSI пакета в целых дБм (int16_t)
+ * @param  out_snr: Указатель на SNR в дБ с плавающей точкой (float)
+ * @return lora_result_t Код операции из системного перечисления
+ */
+lora_result_t lora_driver_read_rssi_and_snr(int16_t *out_rssi_packet, float *out_snr)
+{
+    /* Запрос: Чтение с адреса 0x00, длина 2 байта */
+    uint8_t cmd[6] = {0xC0, 0xC1, 0xC2, 0xC3, 0x00, 0x02};
+    uint8_t response[8] = {0};
+    uint16_t len = 0;
+
+    /* Переключаемся в режим конфигурации (Режим 2) */
+    lora_driver_set_mode(2);
+
+    /* Отправляем команду чтения пакета регистров */
+    if (HAL_UART_Transmit(&hlpuart1, cmd, sizeof(cmd), 100) != HAL_OK) {
+        lora_driver_set_mode(0); /* Возвращаем нормальный режим */
+        return LORA_ERR_SEND;
+    }
+
+    /* Ожидаем ответ от модуля (C1 00 02 [Шум RSSI] [Пакет RSSI]) */
+    if (!lora_driver_read_line(response, sizeof(response), &len)) {
+        lora_driver_set_mode(0);
+        return LORA_ERR_TIMEOUT; /* Используем ваш тайм-аут */
+    }
+
+    /* Возвращаем модуль в нормальный режим работы сразу после чтения */
+    lora_driver_set_mode(0);
+
+    /* Валидация ответа: заголовок + 2 байта данных */
+    // Сырые данные умножены на -2 (raw_RSSI = 190 -> RSSI = -95 dBm)
+    if (len >= 5 && response[0] == 0xC1 && response[1] == 0x00 && response[2] == 0x02) {
+        uint8_t raw_noise  = response[3]; /* Регистр 0x00 */
+        uint8_t raw_packet = response[4]; /* Регистр 0x01 */
+
+        /* 
+         * 1. Расчет RSSI сигнала в целых дБм с математическим округлением.
+         * Формула -((raw + 1) / 2) корректно округляет полуцелые значения.
+         */
+        int16_t p_signal_int = -(((int16_t)raw_packet + 1) / 2);
+
+        /* Записываем результаты по указателям, если они переданы */
+        if (out_rssi_packet != NULL) {
+            *out_rssi_packet = p_signal_int;
+        }
+        
+        if (out_snr != NULL) {
+            /* 
+             * 2. Точный расчет SNR во float с шагом 0.5 dB
+             * SNR = P(сигнала) - P(шума) -> (-raw_packet)/2 - (-raw_noise)/2
+             */
+            *out_snr = ((float)raw_noise - (float)raw_packet) / 2.0f;
+        }
+
+        return LORA_OK;
+    }
+
+    /* Если заголовок пакета поврежден или пришел мусор */
+    return LORA_ERR_RECEIVE;
 }

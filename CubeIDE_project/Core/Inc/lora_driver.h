@@ -54,4 +54,18 @@ lora_result_t lora_driver_exit_at_mode(void);
  */
 lora_result_t lora_driver_at_command(const char *cmd, char *response, uint16_t resp_len);
 
+/* ============================================================================
+ * Config Mode and RSSI Reading
+ * ============================================================================
+ * M0/M1 control for mode switching and RSSI reading via register commands
+ * ============================================================================ */
+
+/* Set LoRa mode via M0/M1 pins */
+void lora_driver_set_mode(uint8_t mode);
+
+/* Read RSSI from LoRa module (requires config mode) */
+/* Returns RSSI in dBm (negative value), or 0 on error */
+int16_t lora_driver_read_rssi(bool ambient);
+lora_result_t lora_driver_read_rssi_and_snr(int16_t *out_rssi_packet, float *out_snr);
+
 #endif /* LORA_DRIVER_H */
